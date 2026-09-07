@@ -290,6 +290,44 @@ const TOOL_DEFINITIONS: Array<ToolDefinition> = [
     call: (tools, args) =>
       tools.getCommitReport(args.traceName, args.commitIndex),
   },
+  {
+    name: 'react_get_agent_tools',
+    description:
+      'WebMCP agent tools that React components own through react-webmcp, ' +
+      'with grounding evidence: {registryFound, tools}. Each tool is ' +
+      '{key, qualifiedName, name, scopePath, description, inputSchema, ' +
+      'annotations, safety, lifetime, source (hook|tree), status, ' +
+      'availability, error, owner {uid, name, type}, ownerSource}. Pass ' +
+      'owner.uid to react_get_component_by_uid or react_get_component_source. ' +
+      'registryFound is false when the page does not use react-webmcp or ' +
+      'runs a production build.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        includeSchema: {
+          type: 'boolean',
+          description: "Include each tool's inputSchema (default true).",
+        },
+      },
+    },
+    call: (tools, args) => {
+      const result: any = tools.getAgentTools();
+      if (
+        args.includeSchema === false &&
+        result != null &&
+        Array.isArray(result.tools)
+      ) {
+        return {
+          ...result,
+          tools: result.tools.map((tool: any) => {
+            const {inputSchema, ...rest} = tool;
+            return rest;
+          }),
+        };
+      }
+      return result;
+    },
+  },
 ];
 
 // A chrome-devtools-mcp third-party tool. `execute` runs in the page and

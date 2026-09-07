@@ -8,6 +8,7 @@
  */
 
 import type {Facade} from './DevToolsFacade';
+import type {AgentToolsResult} from './DevToolsFacadeAgentTools';
 import type {
   TreeNode,
   NodeInfo,
@@ -26,6 +27,7 @@ import type {
 } from './DevToolsFacadeProfilerTools';
 
 import {createTreeTools} from './DevToolsFacadeTreeTools';
+import {createAgentTools} from './DevToolsFacadeAgentTools';
 import {createProfilerTools} from './DevToolsFacadeProfilerTools';
 
 export type {
@@ -41,6 +43,11 @@ export type {
   FindComponentsResult,
   ToolError,
 } from './DevToolsFacadeTreeTools';
+export type {
+  AgentToolEntry,
+  AgentToolOwner,
+  AgentToolsResult,
+} from './DevToolsFacadeAgentTools';
 export type {
   CommitComponent,
   TraceOverviewRow,
@@ -80,6 +87,7 @@ export type Tools = {
     traceName: string,
     commitIndex: number,
   ) => CommitReport | ToolError,
+  getAgentTools: () => AgentToolsResult | ToolError,
 };
 
 /**
@@ -98,6 +106,11 @@ export function createTools(facade: Facade): Tools {
     facade.profilingState,
     tree.getUid,
   );
+  const agent = createAgentTools(
+    facade.fiberRoots,
+    facade.rendererInternals,
+    tree,
+  );
 
   return {
     getComponentTree: tree.getComponentTree,
@@ -112,5 +125,6 @@ export function createTools(facade: Facade): Tools {
     stopProfiling: profiler.stopProfiling,
     getTraceOverview: profiler.getTraceOverview,
     getCommitReport: profiler.getCommitReport,
+    getAgentTools: agent.getAgentTools,
   };
 }

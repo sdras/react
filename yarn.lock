@@ -17022,6 +17022,11 @@ url@~0.10.1:
     punycode "1.3.2"
     querystring "0.2.0"
 
+use-webmcp-tool@^0.2.0:
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/use-webmcp-tool/-/use-webmcp-tool-0.2.0.tgz#7154e4b5230128d24efc5f9aab4393b864969304"
+  integrity sha512-kYUpV1xFmX3Wnq68KOM1MbedpRc6mbgWEcVFtWpFPBTGEcuc7Sva4bHjRxM3k8mkGshkwxnLKn9/I4/NP2bTBw==
+
 use@^3.1.0:
   version "3.1.1"
   resolved "https://registry.yarnpkg.com/use/-/use-3.1.1.tgz#d50c8cac79a19fbc20f2911f56eb973f4e10070f"

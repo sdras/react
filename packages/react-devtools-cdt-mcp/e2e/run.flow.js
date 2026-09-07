@@ -156,6 +156,7 @@ const TOOL_NAMES = [
   'react_stop_profiling',
   'react_get_trace_overview',
   'react_get_commit_report',
+  'react_get_agent_tools',
 ];
 
 const PACKAGE_DIR = path.resolve(__dirname, '..');

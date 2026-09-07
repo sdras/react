@@ -151,3 +151,19 @@ Detailed report for a single commit.
   where `components` is an array of
   `{uid, name, type, actualDuration, selfDuration}` sorted by `actualDuration`
   descending.
+
+### `react_get_agent_tools`
+
+WebMCP agent tools that React components own through
+[`react-webmcp`](../react-webmcp), with grounding evidence.
+
+- **Input:** `includeSchema?` (boolean, include each tool's `inputSchema`,
+  default `true`).
+- **Output:** `{registryFound, tools}`. `registryFound` is `false` when the
+  page does not use `react-webmcp` (or runs a production build, which does not
+  expose the registry). Each tool is
+  `{key, qualifiedName, name, scopePath, description, inputSchema, annotations, safety, lifetime, source, status, availability, error, owner, ownerSource}`.
+  `source` is `"hook"` (`useWebMCPTool`) or `"tree"` (`<ToolTree>`),
+  `owner` is the owning component as `{uid, name, type}` (or `null` with an
+  `unresolvedReason`), and `ownerSource` is that component's definition
+  location (same shape as `react_get_component_source`).

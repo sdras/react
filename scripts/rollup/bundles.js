@@ -869,6 +869,28 @@ const bundles = [
       }),
   },
 
+  /******* React WebMCP *******/
+  {
+    bundleTypes: __EXPERIMENTAL__ ? [NODE_DEV, NODE_PROD] : [],
+    moduleType: RENDERER,
+    entry: 'react-webmcp',
+    global: 'ReactWebMCP',
+    externals: ['react'],
+    minifyWithProdErrorCodes: false,
+    wrapWithModuleBoundaries: false,
+    babel: opts =>
+      Object.assign({}, opts, {
+        // Include JSX
+        presets: opts.presets.concat([
+          require.resolve('@babel/preset-react'),
+          require.resolve('@babel/preset-flow'),
+        ]),
+        plugins: opts.plugins.concat([
+          [require.resolve('@babel/plugin-transform-classes'), {loose: true}],
+        ]),
+      }),
+  },
+
   /******* React Native Fabric *******/
   {
     bundleTypes: __EXPERIMENTAL__

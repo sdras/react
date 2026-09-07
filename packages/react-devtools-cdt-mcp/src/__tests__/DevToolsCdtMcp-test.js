@@ -20,6 +20,7 @@ const TOOL_NAMES = [
   'react_stop_profiling',
   'react_get_trace_overview',
   'react_get_commit_report',
+  'react_get_agent_tools',
 ];
 
 let register;
@@ -575,6 +576,117 @@ describe('react-devtools-cdt-mcp', () => {
         element: unmanaged,
       }),
     ).toEqual({error: 'DOM element is not managed by React'});
+  });
+
+  it('react_get_agent_tools reports when the page has no react-webmcp registry', () => {
+    delete globalThis.__REACT_WEBMCP__;
+    expect(getTool('react_get_agent_tools').execute({})).toEqual({
+      registryFound: false,
+      tools: [],
+    });
+  });
+
+  it('react_get_agent_tools resolves hook-path owners through the registry', () => {
+    let ownerRef = null;
+    function TodoTools() {
+      ownerRef = React.useRef(null);
+      return null;
+    }
+    function App() {
+      return <TodoTools />;
+    }
+    act(() => {
+      ReactDOMClient.createRoot(container).render(<App />);
+    });
+    const record = {
+      key: 'todos_add_todo',
+      qualifiedName: 'todos_add_todo',
+      name: 'add_todo',
+      scopePath: ['todos'],
+      description: 'Add a todo item.',
+      inputSchema: {type: 'object', properties: {text: {type: 'string'}}},
+      annotations: {},
+      safety: 'mutate',
+      lifetime: 'view',
+      source: 'hook',
+      status: 'registered',
+      availability: {
+        enabled: true,
+        scopeAvailable: true,
+        hidden: false,
+        supported: true,
+      },
+      error: null,
+      ownerToken: ownerRef,
+    };
+    globalThis.__REACT_WEBMCP__ = {
+      version: 1,
+      getTools: () => [record],
+      subscribe: () => () => {},
+    };
+    try {
+      const result = getTool('react_get_agent_tools').execute({
+        includeSchema: false,
+      });
+      expect(result.registryFound).toBe(true);
+      expect(result.tools).toHaveLength(1);
+      const tool = result.tools[0];
+      expect(tool.qualifiedName).toBe('todos_add_todo');
+      expect(tool.source).toBe('hook');
+      expect('inputSchema' in tool).toBe(false);
+      expect('ownerToken' in tool).toBe(false);
+      expect(tool.owner).not.toBe(null);
+      expect(tool.owner.name).toBe('TodoTools');
+      expect(tool.owner.type).toBe('function');
+      // The owner uid is shared with the other tools.
+      const details = getTool('react_get_component_by_uid').execute({
+        uid: tool.owner.uid,
+      });
+      expect(details.name).toBe('TodoTools');
+    } finally {
+      delete globalThis.__REACT_WEBMCP__;
+    }
+  });
+
+  it('react_get_agent_tools resolves tree-path owners to the component that rendered the tool', () => {
+    const ReactWebMCP = require('react-webmcp');
+    const registrations = [];
+    document.modelContext = {
+      registerTool(tool, options) {
+        registrations.push(tool.name);
+      },
+    };
+    function Cart() {
+      return (
+        <ReactWebMCP.ToolTree>
+          <ReactWebMCP.Scope name="cart">
+            <ReactWebMCP.Tool
+              name="add_item"
+              description="Add an item to the cart."
+              safety="mutate"
+              execute={() => 'ok'}
+            />
+          </ReactWebMCP.Scope>
+        </ReactWebMCP.ToolTree>
+      );
+    }
+    try {
+      act(() => {
+        ReactDOMClient.createRoot(container).render(<Cart />);
+      });
+      expect(registrations).toEqual(['cart_add_item']);
+      const result = getTool('react_get_agent_tools').execute({});
+      expect(result.registryFound).toBe(true);
+      const tool = result.tools.find(t => t.qualifiedName === 'cart_add_item');
+      expect(tool).toBeDefined();
+      expect(tool.source).toBe('tree');
+      expect(tool.status).toBe('registered');
+      expect(tool.owner).not.toBe(null);
+      expect(tool.owner.name).toBe('Cart');
+    } finally {
+      delete document.modelContext;
+      delete globalThis.__REACT_WEBMCP__;
+    }
   });
 
   it('returns tool errors as a raw payload', () => {

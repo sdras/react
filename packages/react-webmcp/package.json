@@ -1,0 +1,45 @@
+{
+  "name": "react-webmcp",
+  "description": "Derive WebMCP agent tools (document.modelContext) from a React tree: a useWebMCPTool hook wrapper, scoped registries, and a reconciler-backed tool tree with Suspense-aware availability.",
+  "version": "19.3.0",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/facebook/react.git",
+    "directory": "packages/react-webmcp"
+  },
+  "keywords": [
+    "react",
+    "webmcp",
+    "agent",
+    "tools",
+    "modelContext"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/facebook/react/issues"
+  },
+  "homepage": "https://react.dev/",
+  "dependencies": {
+    "use-webmcp-tool": "^0.2.0"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "@babel/plugin-transform-flow-strip-types": "^7.10.4",
+    "@babel/register": "^7.14.5",
+    "chrome-devtools-mcp": "1.8.0",
+    "cross-env": "^7.0.3"
+  },
+  "scripts": {
+    "test:validate": "node validate/run.js",
+    "test:validate:ci": "cross-env E2E_CI=true node validate/run.js"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "index.js",
+    "cjs/"
+  ]
+}

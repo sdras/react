@@ -337,6 +337,7 @@ module.exports = {
         'packages/react-debug-tools/**/*.js',
         'packages/react-devtools-extensions/**/*.js',
         'packages/react-devtools-facade/**/*.js',
+        'packages/react-webmcp/**/*.js',
           'packages/react-native-renderer/**/*.js',
         'packages/eslint-plugin-react-hooks/**/*.js',
         'packages/jest-react/**/*.js',

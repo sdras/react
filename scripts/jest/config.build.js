@@ -67,7 +67,10 @@ module.exports = Object.assign({}, baseConfig, {
   // Don't run bundle tests on -test.internal.* files
   testPathIgnorePatterns: ['/node_modules/', '-test.internal.js$'],
   // Exclude the build output from transforms
-  transformIgnorePatterns: ['/node_modules/', '<rootDir>/build/'],
+  transformIgnorePatterns: [
+    '/node_modules/(?!use-webmcp-tool/)',
+    '<rootDir>/build/',
+  ],
   setupFiles: [
     ...baseConfig.setupFiles,
     require.resolve('./setupTests.build.js'),

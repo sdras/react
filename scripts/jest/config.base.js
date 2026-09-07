@@ -21,6 +21,8 @@ module.exports = {
     ],
     '.(?!ts$)': require.resolve('./preprocessor.js'),
   },
+  // use-webmcp-tool ships ESM only; transform it like source.
+  transformIgnorePatterns: ['/node_modules/(?!use-webmcp-tool/)'],
   setupFiles: [require.resolve('./setupEnvironment.js')],
   setupFilesAfterEnv: [require.resolve('./setupTests.js')],
   // Only include files directly in __tests__, not in nested folders.

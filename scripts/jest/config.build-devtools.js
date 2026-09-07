@@ -63,7 +63,7 @@ module.exports = Object.assign({}, baseConfig, {
   testPathIgnorePatterns: ['/node_modules/', '-test.internal.js$'],
   // Exclude the build output from transforms
   transformIgnorePatterns: [
-    '/node_modules/(?!(rbush|quickselect)/)',
+    '/node_modules/(?!(rbush|quickselect|use-webmcp-tool)/)',
     '<rootDir>/build/',
     '/__compiled__/',
     '/__untransformed__/',

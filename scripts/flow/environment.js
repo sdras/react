@@ -640,3 +640,28 @@ declare module 'rbush' {
 declare class CSS {
   static escape(str: string): string;
 }
+
+declare module 'use-webmcp-tool' {
+  declare export type ToolAnnotations = {
+    readOnlyHint?: boolean,
+    consequentialHint?: boolean,
+    untrustedContentHint?: boolean,
+    ...
+  };
+  declare export type WebMCPOptions = {
+    name: string,
+    description: string,
+    inputSchema?: mixed,
+    annotations?: ToolAnnotations,
+    execute: (args: any) => mixed,
+    enabled?: boolean,
+    formatOutput?: (result: mixed, args: any) => mixed,
+    onError?: (error: mixed) => void,
+  };
+  declare export type WebMCPState = {
+    supported: boolean,
+    registered: boolean,
+    error: Error | null,
+  };
+  declare export function useWebMCP(options: WebMCPOptions): WebMCPState;
+}

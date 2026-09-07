@@ -716,6 +716,16 @@ module.exports = [
     isServerSupported: false,
   },
   {
+    shortName: 'webmcp',
+    entryPoints: ['react-webmcp'],
+    paths: [
+      'react-webmcp',
+      'react-server/src/ReactFlightServerConfigDebugNoop.js',
+    ],
+    isFlowTyped: true,
+    isServerSupported: false,
+  },
+  {
     shortName: 'noop',
     entryPoints: [
       'react-noop-renderer',
