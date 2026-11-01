@@ -70,7 +70,8 @@ const TOOL_DEFINITIONS: Array<ToolDefinition> = [
     description:
       'Snapshot of the React component tree as {nodes}, where nodes is a ' +
       'flat array of {uid, type, name, key, firstChild, nextSibling}. ' +
-      'firstChild/nextSibling link nodes by uid. uid is the stable handle ' +
+      'Suspense nodes also carry suspended: true while they show their ' +
+      'fallback. firstChild/nextSibling link nodes by uid. uid is the stable handle ' +
       'the other tools accept. Covers every mounted root unless rootUid ' +
       'scopes the walk (depth defaults to 20).',
     inputSchema: {

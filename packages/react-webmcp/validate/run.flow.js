@@ -18,8 +18,8 @@
 //      source location.
 //   2. Registration cross-check: the tools reported as registered are exactly
 //      the tools the browser (or the fixture's modelContext shim) holds.
-//   3. Suspense behavior: tools inside a suspended boundary are unavailable
-//      and unregistered, then return.
+//   3. Suspense behavior: tools inside a suspended boundary leave the browser
+//      (and are gone from the registry or marked unavailable), then return.
 //   4. Schema/handler agreement: each tool's inputSchema declares the
 //      parameters its execute function reads (static analysis of the owner's
 //      source file).
@@ -130,6 +130,9 @@ const SESSION_ID = crypto.randomUUID();
 
 // Budgets from Chrome's WebMCP guidance (kept in sync with
 // src/ReactWebMCPValidation.js).
+// How long the registry must stay unchanged before the page counts as settled.
+const REGISTRY_SETTLE_MS = 500;
+
 const MAX_NAME_LENGTH = 30;
 const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_PARAM_DESCRIPTION_LENGTH = 150;
@@ -207,6 +210,23 @@ function parseArgs(argv: Array<string>): Options {
 }
 
 /** Process helpers (same shape as the react-devtools-cdt-mcp e2e runner) */
+
+// chrome-devtools-mcp refuses to start on older Node releases, and from inside
+// its daemon that surfaces only as a pid-file timeout. Check up front instead.
+function ensureSupportedNode(): void {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  const supported =
+    (major === 20 && minor >= 19) ||
+    (major === 22 && minor >= 12) ||
+    major >= 23;
+  if (!supported) {
+    throw createError(
+      `Node ${process.version} cannot run chrome-devtools-mcp. Use Node ` +
+        '20.19, 22.12 or newer (for example the version in .nvmrc) to run the ' +
+        'react-webmcp contract check.'
+    );
+  }
+}
 
 function ensureBuiltModules(): void {
   if (!fs.existsSync(path.join(BUILT_MODULES_DIR, 'react-webmcp'))) {
@@ -568,12 +588,61 @@ async function waitForPageReady(
       result.hasHook === true &&
       result.hasRegistry === true
     ) {
+      await waitForPageToSettle(chrome, deadline - Date.now());
       return;
     }
     await sleep(250);
   }
   throw createError(
     `Timed out waiting for the fixture to be ready: ${formatValue(lastResult)}`
+  );
+}
+
+// Tools behind a boundary that suspends on first render (the fixture's
+// inventory, for example) register only once the boundary shows its content,
+// so reading the tree the moment the app mounts would miss them. Wait until no
+// Suspense boundary is showing a fallback and the registry has stopped
+// changing before any check reads the page.
+async function waitForPageToSettle(
+  chrome: Chrome,
+  timeout: number
+): Promise<void> {
+  const deadline = Date.now() + timeout;
+  let suspended: Array<string> = [];
+  let lastSnapshot: mixed = null;
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    const tree: any = await callTool(chrome, 'react_get_component_tree', {
+      depth: 200,
+    });
+    const nodes = tree != null && Array.isArray(tree.nodes) ? tree.nodes : [];
+    suspended = nodes
+      .filter(node => node != null && node.suspended === true)
+      .map(node => node.name + ' (' + node.uid + ')');
+    const snapshot = await evaluate(
+      chrome,
+      `() => window.__REACT_WEBMCP__
+        .getTools()
+        .map(tool => tool.qualifiedName + ':' + tool.status)
+        .sort()
+        .join(',')`
+    );
+    if (snapshot !== lastSnapshot) {
+      lastSnapshot = snapshot;
+      stableSince = Date.now();
+    }
+    if (
+      suspended.length === 0 &&
+      Date.now() - stableSince >= REGISTRY_SETTLE_MS
+    ) {
+      return;
+    }
+    await sleep(250);
+  }
+  throw createError(
+    `Timed out waiting for the page to settle. Suspended boundaries: [${suspended.join(
+      ', '
+    )}]; last registry snapshot: ${formatValue(lastSnapshot)}`
   );
 }
 
@@ -992,14 +1061,18 @@ async function checkSuspense(
     ];
   }
   const names = cartTools.map(tool => tool.qualifiedName);
+  // A DOM-tree Suspense boundary around <ToolTree> unmounts the tool root
+  // (React calls the bridge's componentWillUnmount), so its tools leave the
+  // registry entirely. A boundary inside the tool tree hides host instances
+  // instead, which keeps the records with status 'unavailable'. Either way the
+  // browser must no longer hold the registration.
   const allUnavailable = (state: Collected) =>
     names.every(name => {
       const tool = state.tools.find(
         candidate => candidate.qualifiedName === name
       );
       return (
-        tool != null &&
-        tool.status === 'unavailable' &&
+        (tool == null || tool.status === 'unavailable') &&
         state.registeredNames.indexOf(name) === -1
       );
     });
@@ -1027,11 +1100,12 @@ async function checkSuspense(
         null,
         `After suspending the cart, expected [${names.join(
           ', '
-        )}] to be unavailable and unregistered. Saw statuses ${formatValue(
-          suspended.tools
-            .filter(tool => names.indexOf(tool.qualifiedName) !== -1)
-            .map(tool => [tool.qualifiedName, tool.status])
-        )} and registered names ${formatValue(suspended.registeredNames)}.`
+        )}] to be unregistered and gone from the registry (or marked ` +
+          `unavailable). Saw statuses ${formatValue(
+            suspended.tools
+              .filter(tool => names.indexOf(tool.qualifiedName) !== -1)
+              .map(tool => [tool.qualifiedName, tool.status])
+          )} and registered names ${formatValue(suspended.registeredNames)}.`
       )
     );
   }
@@ -1224,6 +1298,7 @@ async function main(argv: Array<string>): Promise<number> {
     printHelp();
     return 0;
   }
+  ensureSupportedNode();
   if (options.url == null) {
     ensureBuiltModules();
     ensureFixtureDependencies(options.fixtureDir);

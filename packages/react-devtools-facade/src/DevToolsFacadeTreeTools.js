@@ -35,6 +35,8 @@ export type TreeNode = {
   key: string | null,
   firstChild: string | null,
   nextSibling: string | null,
+  // Only on 'suspense' nodes: true while the boundary shows its fallback.
+  suspended?: boolean,
 };
 
 // One inspected hook. value is normalized (serialization-safe); subHooks holds
@@ -321,14 +323,22 @@ export function createTreeTools(
   ): void {
     const children = currentDepth < maxDepth ? collectChildren(fiber) : [];
     const firstChild = children.length > 0 ? getUid(children[0]) : null;
-    nodes.push({
+    const type = getTypeTagForFiber(internals, fiber);
+    const node: TreeNode = {
       uid: getUid(fiber),
-      type: getTypeTagForFiber(internals, fiber),
+      type,
       name: getDisplayName(internals, fiber),
       key: fiber.key != null ? String(fiber.key) : null,
       firstChild,
       nextSibling: null,
-    });
+    };
+    if (type === 'suspense') {
+      // A Suspense fiber holds a SuspenseState in memoizedState only while it
+      // renders its fallback. Agents (and the react-webmcp contract check) use
+      // this to wait for a page to settle before reading it.
+      node.suspended = fiber.memoizedState !== null;
+    }
+    nodes.push(node);
     for (let i = 0; i < children.length; i++) {
       collectNodes(internals, children[i], maxDepth, currentDepth + 1, nodes);
       if (i < children.length - 1) {

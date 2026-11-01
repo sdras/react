@@ -12,7 +12,12 @@ require('@babel/register')({
   configFile: false,
   extensions: ['.js'],
   only: [__dirname],
-  plugins: ['@babel/plugin-transform-flow-strip-types'],
+  plugins: [
+    // Parse modern Flow syntax (such as `x as T` casts, which this repo's Flow
+    // version requires) the same way the rest of the repo does.
+    'babel-plugin-syntax-hermes-parser',
+    '@babel/plugin-transform-flow-strip-types',
+  ],
 });
 
 require('./run.flow')

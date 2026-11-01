@@ -21,6 +21,7 @@
   },
   "homepage": "https://react.dev/",
   "dependencies": {
+    "scheduler": "^0.28.0",
     "use-webmcp-tool": "^0.2.0"
   },
   "peerDependencies": {

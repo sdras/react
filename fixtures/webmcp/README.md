@@ -53,7 +53,9 @@ React tools (including `react_get_agent_tools`) are discoverable by
 
 ## Contract check
 
-With the build in place, from the repo root:
+With the build in place, from the repo root (the check drives
+[chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp),
+which needs Node 20.19, 22.12 or newer):
 
 ```sh
 yarn validate-tools --update   # first run: write fixtures/webmcp/tools.manifest.json

@@ -540,7 +540,47 @@ describe('react-devtools-facade', () => {
         key: null,
         firstChild: 'r3',
         nextSibling: null,
+        suspended: false,
       });
+    });
+
+    it('marks a Suspense boundary as suspended while it shows its fallback', async () => {
+      let resolveContent;
+      const pending = new Promise(resolve => {
+        resolveContent = resolve;
+      });
+      let ready = false;
+      function Content() {
+        if (!ready) {
+          throw pending;
+        }
+        return <div>content</div>;
+      }
+      function App() {
+        return (
+          <React.Suspense fallback={<div>loading</div>}>
+            <Content />
+          </React.Suspense>
+        );
+      }
+
+      act(() => {
+        ReactDOMClient.createRoot(container).render(<App />);
+      });
+      expect(container.textContent).toBe('loading');
+      expect(
+        getComponentTree().find(n => n.type === 'suspense').suspended,
+      ).toBe(true);
+
+      await act(async () => {
+        ready = true;
+        resolveContent();
+        await pending;
+      });
+      expect(container.textContent).toBe('content');
+      expect(
+        getComponentTree().find(n => n.type === 'suspense').suspended,
+      ).toBe(false);
     });
 
     it('includes Context Provider in the tree', () => {
