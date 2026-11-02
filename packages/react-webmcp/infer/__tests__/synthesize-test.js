@@ -152,6 +152,7 @@ describe('infer synthesize', () => {
   it('knows the network providers and rejects unknown names', () => {
     expect(getProvider('anthropic').name).toBe('anthropic:claude-opus-5-5');
     expect(getProvider('gemini').name).toBe('gemini:gemini-2.5-flash');
+    expect(getProvider('openai', {model: 'm'}).name).toBe('openai:m');
     expect(() => getProvider('nope')).toThrow('unknown provider "nope"');
   });
 

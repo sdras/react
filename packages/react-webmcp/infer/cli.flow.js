@@ -12,7 +12,7 @@
 // The react-webmcp inference assistant.
 //
 //   yarn infer-tools extract    --src <dir> [--out <file>] [--route-from …]
-//   yarn infer-tools synthesize --in <file> [--out <file>] [--provider …]
+//   yarn infer-tools synthesize --in <file> [--out <file>] [--provider …] [--model …]
 //   yarn infer-tools trace      --in <file> [--out <file>] [--url …] [--fixture …]
 //   yarn infer-tools emit       --accepted <file> [--src <dir>] [--write]
 //
@@ -205,6 +205,8 @@ async function runSynthesize(args: Array<string>): Promise<number> {
     in: 'string',
     out: 'string',
     provider: 'string',
+    model: 'string',
+    'base-url': 'string',
   });
   const input = path.resolve(requireFlag(flags, 'in', 'synthesize'));
   const out = path.resolve(stringFlag(flags, 'out') || input);
@@ -212,7 +214,11 @@ async function runSynthesize(args: Array<string>): Promise<number> {
     stringFlag(flags, 'provider'),
     process.env,
   );
-  const provider = getProvider(providerName);
+  const provider = getProvider(providerName, {
+    model: stringFlag(flags, 'model'),
+    baseURL: stringFlag(flags, 'base-url'),
+    cwd: process.cwd(),
+  });
   const file = readProposalsFile(input);
   const result = await synthesizeProposals(file, provider);
   writeJson(out, result.file);
@@ -366,8 +372,12 @@ function printHelp(): void {
       '  synthesize  Write better names and descriptions for proposed tools',
       '              --in <file>                 Proposals file (required)',
       '              --out <file>                Output file (default: in place)',
-      '              --provider fixture|anthropic|gemini',
-      '                                          Also read from REACT_WEBMCP_LLM (default fixture)',
+      '              --provider fixture|anthropic|gemini|openai|./my-provider.js',
+      '                                          Also read from REACT_WEBMCP_LLM (default fixture);',
+      '                                          openai covers any chat-completions endpoint, a path',
+      '                                          loads your own module (see infer/README.md)',
+      '              --model <id>                The model to use (overrides the provider default)',
+      '              --base-url <url>            openai: the endpoint (default https://api.openai.com/v1)',
       '  trace       Ground proposals against a running page (mounted/replay evidence)',
       '              --in <file>                 Proposals file (required)',
       '              --out <file>                Output file (default: in place)',

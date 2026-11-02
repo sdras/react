@@ -145,8 +145,12 @@ accepting it.
    (`REACT_WEBMCP_ANTHROPIC_MODEL` and `REACT_WEBMCP_ANTHROPIC_FALLBACKS=off`
    adjust that). `--provider gemini` does the same over the Gemini REST API
    with `GEMINI_API_KEY` (`REACT_WEBMCP_GEMINI_MODEL`, default
-   `gemini-2.5-flash`). Suggestions that break the naming rules are dropped
-   with a warning, never applied.
+   `gemini-2.5-flash`). `--provider openai` reaches OpenAI and any server
+   that speaks its chat completions format (Ollama, vLLM, LM Studio and the
+   like, through `--base-url`), and `--provider ./my-provider.js` loads a
+   module of your own, so the model is yours to choose; `--model` overrides
+   every provider's default. Suggestions that break the naming rules are
+   dropped with a warning, never applied.
 3. `yarn infer-tools trace --in tools.proposals.json [--journey journey.json]`
    opens the app in headless Chrome and records, per proposal, whether its
    owning component is mounted, what the registered read-only tools return,

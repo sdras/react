@@ -19,6 +19,7 @@ const {
   createGeminiProvider,
   toGeminiSchema,
 } = require('../providers/gemini.flow');
+const {createOpenAIProvider, stripFence} = require('../providers/openai.flow');
 const {getProvider, synthesizeProposals} = require('../synthesize.flow');
 
 let sourceDir;
@@ -450,8 +451,237 @@ describe('infer synthesize providers', () => {
     expect(result.file.proposals[1].name).toBe('add_item');
   });
 
-  it('knows all three providers by name', () => {
+  describe('openai-compatible', () => {
+    function okResponse(content, extra) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{message: {content}, finish_reason: 'stop', ...extra}],
+        }),
+      };
+    }
+
+    it('posts a chat completion with a JSON schema and bearer auth', async () => {
+      const seen = [];
+      const provider = createOpenAIProvider({
+        fetch: async (url, init) => {
+          seen.push({url, init});
+          return okResponse(
+            suggestionsText([
+              {
+                id: 'Cart.js#Cart.addItem',
+                name: 'add_cart_item',
+                description: 'Add an item to the cart by SKU.',
+              },
+            ]),
+          );
+        },
+        env: {OPENAI_API_KEY: 'k', REACT_WEBMCP_OPENAI_MODEL: 'some-model'},
+        warn: () => {},
+      });
+      expect(provider.name).toBe('openai:some-model');
+      const result = await provider.synthesize([proposal()], context());
+      expect(result[0].name).toBe('add_cart_item');
+      expect(seen).toHaveLength(1);
+      expect(seen[0].url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(seen[0].init.headers.authorization).toBe('Bearer k');
+      const body = JSON.parse(seen[0].init.body);
+      expect(body.model).toBe('some-model');
+      expect(body.messages.map(m => m.role)).toEqual(['system', 'user']);
+      expect(body.messages[0].content).toBe(llm.SYSTEM_PROMPT);
+      expect(body.response_format).toEqual({
+        type: 'json_schema',
+        json_schema: {
+          name: 'suggestions',
+          schema: llm.SUGGESTIONS_SCHEMA,
+          strict: true,
+        },
+      });
+    });
+
+    it('talks to a local server without a key and tolerates fenced JSON', async () => {
+      const seen = [];
+      const provider = createOpenAIProvider({
+        fetch: async (url, init) => {
+          seen.push({url, init});
+          return okResponse(
+            '```json\n' +
+              suggestionsText([
+                {
+                  id: 'Cart.js#Cart.addItem',
+                  name: 'add_cart_item',
+                  description: 'Add an item to the cart.',
+                },
+              ]) +
+              '\n```',
+          );
+        },
+        baseURL: 'http://localhost:11434/v1/',
+        model: 'llama3.1',
+        env: {REACT_WEBMCP_OPENAI_JSON: 'object'},
+        warn: () => {},
+      });
+      expect(provider.name).toBe('openai@localhost:11434:llama3.1');
+      const result = await provider.synthesize([proposal()], context());
+      expect(result[0].name).toBe('add_cart_item');
+      expect(seen[0].url).toBe('http://localhost:11434/v1/chat/completions');
+      expect(seen[0].init.headers.authorization).toBe(undefined);
+      expect(JSON.parse(seen[0].init.body).response_format).toEqual({
+        type: 'json_object',
+      });
+    });
+
+    it('fails clearly without a model, on HTTP errors, refusals and cut-offs', async () => {
+      await expect(
+        createOpenAIProvider({
+          fetch: async () => okResponse('{}'),
+          env: {},
+        }).synthesize([proposal()], context()),
+      ).rejects.toThrow('needs a model');
+      await expect(
+        createOpenAIProvider({
+          fetch: async () => ({
+            ok: false,
+            status: 400,
+            text: async () => 'unsupported response_format',
+          }),
+          model: 'm',
+          env: {},
+        }).synthesize([proposal()], context()),
+      ).rejects.toThrow(
+        'api.openai.com returned HTTP 400: unsupported response_format (this server may not support json_schema responses; set REACT_WEBMCP_OPENAI_JSON=object or none)',
+      );
+      await expect(
+        createOpenAIProvider({
+          fetch: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              choices: [{message: {refusal: 'no'}, finish_reason: 'stop'}],
+            }),
+          }),
+          model: 'm',
+          env: {},
+        }).synthesize([proposal()], context()),
+      ).rejects.toThrow('the model declined the request: no');
+      await expect(
+        createOpenAIProvider({
+          fetch: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              choices: [{message: {content: '{'}, finish_reason: 'length'}],
+            }),
+          }),
+          model: 'm',
+          env: {},
+        }).synthesize([proposal()], context()),
+      ).rejects.toThrow('cut off');
+      expect(() =>
+        createOpenAIProvider({env: {REACT_WEBMCP_OPENAI_JSON: 'yaml'}}),
+      ).toThrow('REACT_WEBMCP_OPENAI_JSON must be one of schema, object, none');
+      expect(stripFence('  ```\n{"a":1}\n```  ')).toBe('{"a":1}');
+      expect(stripFence('{"a":1}')).toBe('{"a":1}');
+    });
+  });
+
+  describe('provider modules', () => {
+    let dir;
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-webmcp-provider-'));
+    });
+    afterEach(() => {
+      fs.rmSync(dir, {recursive: true, force: true});
+    });
+
+    it('wraps a {name, complete} module in the shared prompt and validation', async () => {
+      fs.writeFileSync(
+        path.join(dir, 'completer.js'),
+        `
+        const seen = [];
+        module.exports = {
+          name: 'my-llm',
+          seen,
+          complete(request) {
+            seen.push(request);
+            return JSON.stringify({
+              suggestions: [
+                {id: 'Cart.js#Cart.addItem', name: 'add_cart_item', description: 'Add an item.'},
+                {id: 'Cart.js#Cart.other', name: 'Not Snake', description: 'bad'},
+              ],
+            });
+          },
+        };
+        `,
+      );
+      const warnings = [];
+      const provider = getProvider('./completer.js', {
+        cwd: dir,
+        warn: message => warnings.push(message),
+      });
+      expect(provider.name).toBe('my-llm');
+      const file = {
+        version: 1,
+        generatedAt: '',
+        source: {dir: sourceDir, files: ['Cart.js']},
+        proposals: [proposal(), proposal({id: 'Cart.js#Cart.other'})],
+      };
+      const result = await synthesizeProposals(file, provider);
+      expect(result.touched.map(p => [p.qualifiedName, p.provider])).toEqual([
+        ['cart_add_cart_item', 'my-llm'],
+        ['cart_add_item', 'my-llm'],
+      ]);
+      expect(warnings).toEqual([
+        'my-llm: Cart.js#Cart.other: name "Not Snake" is not snake_case; kept as is',
+      ]);
+      const module = require(path.join(dir, 'completer.js'));
+      expect(module.seen).toHaveLength(1);
+      expect(module.seen[0].system).toBe(llm.SYSTEM_PROMPT);
+      expect(module.seen[0].prompt).toContain('id: Cart.js#Cart.addItem');
+    });
+
+    it('calls a factory with the model and uses a full provider as is', async () => {
+      fs.writeFileSync(
+        path.join(dir, 'factory.cjs'),
+        `
+        module.exports = function create(options) {
+          return {
+            name: 'factory:' + options.model + '@' + options.baseURL,
+            async synthesize(proposals) {
+              return proposals.map(p => ({...p, name: 'renamed', description: 'From the factory.'}));
+            },
+          };
+        };
+        `,
+      );
+      const provider = getProvider(path.join(dir, 'factory.cjs'), {
+        model: 'm',
+        baseURL: 'http://x',
+      });
+      expect(provider.name).toBe('factory:m@http://x');
+      const result = await provider.synthesize([proposal()], context());
+      expect(result[0].name).toBe('renamed');
+    });
+
+    it('explains unusable modules', () => {
+      fs.writeFileSync(path.join(dir, 'empty.js'), 'module.exports = {};');
+      expect(() => getProvider('./empty.js', {cwd: dir})).toThrow(
+        'provider module ./empty.js must export {name, complete(request)}, {name, synthesize(proposals, context)}, or a function returning one of those',
+      );
+      expect(() => getProvider('./missing.js', {cwd: dir})).toThrow(
+        'could not load provider module ./missing.js',
+      );
+    });
+  });
+
+  it('knows the providers by name and passes --model through', () => {
     expect(getProvider('fixture').name).toBe('fixture');
-    expect(() => getProvider('nope')).toThrow('unknown provider');
+    expect(getProvider('anthropic', {model: 'x'}).name).toBe('anthropic:x');
+    expect(getProvider('gemini', {model: 'y'}).name).toBe('gemini:y');
+    expect(getProvider('openai', {model: 'z'}).name).toBe('openai:z');
+    expect(() => getProvider('nope')).toThrow(
+      'unknown provider "nope"; expected one of fixture, anthropic, gemini, openai, or the path of a provider module such as ./my-provider.js',
+    );
   });
 });

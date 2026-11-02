@@ -11,10 +11,13 @@
 
 // `infer synthesize`: rewrites the placeholder names and descriptions that
 // `extract` produced into ones an agent can act on. The work is delegated to
-// a provider: the deterministic `fixture` provider (no network), or the
-// `anthropic` and `gemini` providers in ./providers, which show the model the
-// source around each binding and ask for a name and description. All three
-// implement `SynthesizeProvider`.
+// a provider: the deterministic `fixture` provider (no network); the
+// `anthropic`, `gemini` and `openai` providers in ./providers, which show the
+// model the source around each binding and ask for a name and description
+// (`openai` speaks the chat completions wire format, so it also covers local
+// and hosted servers such as Ollama or vLLM behind --base-url); or a module of
+// the user's own, named by path. All of them implement `SynthesizeProvider`,
+// and the model is never baked in: --model overrides every provider's default.
 
 import type {
   ProposalsFile,
@@ -37,7 +40,17 @@ export type SynthesizeProvider = {
   ) => Promise<Array<ToolProposal>>,
 };
 
-const KNOWN_PROVIDERS = ['fixture', 'anthropic', 'gemini'];
+export type ProviderOptions = {
+  // --model: overrides the provider's default (or required, for openai).
+  model?: ?string,
+  // --base-url: the endpoint for openai-compatible servers.
+  baseURL?: ?string,
+  // Where a provider module path is resolved from (default process.cwd()).
+  cwd?: ?string,
+  warn?: (message: string) => void,
+};
+
+const KNOWN_PROVIDERS = ['fixture', 'anthropic', 'gemini', 'openai'];
 const DEFAULT_PROVIDER = 'fixture';
 
 function resolveProviderName(
@@ -54,18 +67,54 @@ function resolveProviderName(
   return DEFAULT_PROVIDER;
 }
 
-function getProvider(name: string): SynthesizeProvider {
+function getProvider(
+  name: string,
+  options: ProviderOptions = {},
+): SynthesizeProvider {
+  const model =
+    options.model != null && options.model !== '' ? options.model : undefined;
+  const baseURL =
+    options.baseURL != null && options.baseURL !== ''
+      ? options.baseURL
+      : undefined;
   if (name === 'fixture') {
     return require('./providers/fixture.flow').createFixtureProvider();
   }
   if (name === 'anthropic') {
-    return require('./providers/anthropic.flow').createAnthropicProvider();
+    return require('./providers/anthropic.flow').createAnthropicProvider({
+      model,
+      warn: options.warn,
+    });
   }
   if (name === 'gemini') {
-    return require('./providers/gemini.flow').createGeminiProvider();
+    return require('./providers/gemini.flow').createGeminiProvider({
+      model,
+      warn: options.warn,
+    });
+  }
+  if (name === 'openai') {
+    return require('./providers/openai.flow').createOpenAIProvider({
+      model,
+      baseURL,
+      warn: options.warn,
+    });
+  }
+  const {
+    isProviderPath,
+    loadProviderModule,
+  } = require('./providers/module.flow');
+  if (isProviderPath(name)) {
+    return loadProviderModule(name, {
+      cwd: options.cwd != null ? options.cwd : process.cwd(),
+      model,
+      baseURL,
+      warn: options.warn,
+    });
   }
   throw new Error(
-    `unknown provider "${name}"; expected one of ${KNOWN_PROVIDERS.join(', ')}`,
+    `unknown provider "${name}"; expected one of ${KNOWN_PROVIDERS.join(
+      ', ',
+    )}, or the path of a provider module such as ./my-provider.js`,
   );
 }
 

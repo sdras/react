@@ -6,7 +6,8 @@ part of the runtime package.
 
 ```
 yarn infer-tools extract    --src <dir> [--out <file>] [--route-from path|scope|component]
-yarn infer-tools synthesize --in <proposals file> [--out <file>] [--provider fixture|anthropic|gemini]
+yarn infer-tools synthesize --in <proposals file> [--out <file>] [--provider <name or ./module.js>]
+                            [--model <id>] [--base-url <url>]
 yarn infer-tools trace      --in <proposals file> [--out <file>] [--url <app>] [--journey <file>]...
 yarn infer-tools emit       --accepted <ReviewExport or proposals file> [--src <dir>] [--write]
                             [--evals <dir>] [--force-evals]
@@ -33,11 +34,31 @@ yarn infer-tools emit       --accepted <ReviewExport or proposals file> [--src <
   server-side refusal fallback is on unless
   `REACT_WEBMCP_ANTHROPIC_FALLBACKS=off`). `gemini` calls the generateContent
   REST API (`GEMINI_API_KEY`; model `gemini-2.5-flash`, override with
-  `REACT_WEBMCP_GEMINI_MODEL`). Both send each batch of candidates with the
-  source around their bindings and ask for a JSON list of suggestions; a
-  suggestion that breaks the naming rules is dropped with a warning. A
-  provider is a `{name, synthesize(proposals, context)}` object (see
-  `synthesize.flow.js`).
+  `REACT_WEBMCP_GEMINI_MODEL`). `openai` speaks the chat completions wire
+  format, so it reaches OpenAI (`OPENAI_API_KEY`) and any compatible server
+  such as Ollama, vLLM, LM Studio, Groq or OpenRouter through `--base-url`
+  (or `OPENAI_BASE_URL`); it has no default model, so pass `--model` or set
+  `REACT_WEBMCP_OPENAI_MODEL`, and `REACT_WEBMCP_OPENAI_JSON=object|none`
+  relaxes the JSON schema request for servers that lack it. `--model`
+  overrides the default of every provider. All of them send each batch of
+  candidates with the source around their bindings and ask for a JSON list of
+  suggestions; a suggestion that breaks the naming rules is dropped with a
+  warning.
+
+  To bring a model none of those reach, pass a path: `--provider
+  ./my-provider.js` (or `REACT_WEBMCP_LLM=./my-provider.js`). The module
+  exports `{name, complete(request)}`, where `request` is `{system, prompt,
+  schema}` and `complete` returns the JSON text the model produced; batching,
+  the prompt and validation stay in the CLI, and the module imports nothing
+  from this package. A module may instead export a full `{name,
+  synthesize(proposals, context)}` provider, or a function that receives
+  `{model, baseURL, warn}` and returns either. For example, against a local
+  Ollama:
+
+  ```
+  yarn infer-tools synthesize --in tools.proposals.json \
+    --provider openai --base-url http://localhost:11434/v1 --model llama3.1
+  ```
 - `trace` opens the fixture (or `--url`) in headless Chrome through
   chrome-devtools-mcp, the same way `yarn validate-tools` does, and records
   whether each owning component is mounted and what the registered read-only
