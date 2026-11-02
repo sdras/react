@@ -136,12 +136,32 @@ accepting it.
    handler) and the grounding evidence a reviewer needs. Existing
    `useWebMCPTool` calls and `<Tool>` elements appear as already exported.
 2. `yarn infer-tools synthesize --in tools.proposals.json` rewrites the
-   placeholder descriptions. The `fixture` provider is deterministic; set
-   `REACT_WEBMCP_LLM` or `--provider` to pick another once one exists.
-3. Render `<ToolReview>` from `react-webmcp/unstable_review` in development
+   placeholder names and descriptions. The `fixture` provider is
+   deterministic and needs no network. `--provider anthropic` (or
+   `REACT_WEBMCP_LLM=anthropic`) sends each batch of candidates, with the
+   source around their bindings, to Claude through the official SDK; it reads
+   `ANTHROPIC_API_KEY` (or an `ant auth login` profile), defaults to
+   `claude-opus-5-5`, and enables Anthropic's server-side refusal fallback
+   (`REACT_WEBMCP_ANTHROPIC_MODEL` and `REACT_WEBMCP_ANTHROPIC_FALLBACKS=off`
+   adjust that). `--provider gemini` does the same over the Gemini REST API
+   with `GEMINI_API_KEY` (`REACT_WEBMCP_GEMINI_MODEL`, default
+   `gemini-2.5-flash`). Suggestions that break the naming rules are dropped
+   with a warning, never applied.
+3. `yarn infer-tools trace --in tools.proposals.json [--journey journey.json]`
+   opens the app in headless Chrome and records, per proposal, whether its
+   owning component is mounted, what the registered read-only tools return,
+   and, with a journey file (`{"name", "steps": [{"fill", "value"},
+   {"click", "near"?}, {"tool", "input"?}, {"wait"}]}`), which proposals the
+   journey's clicks and form submissions exercised and what mutating tools did
+   when the journey called them.
+4. Render `<ToolReview>` from `react-webmcp/unstable_review` in development
    and pass it the file's `proposals`. It also lists the tools registered in
-   the page right now, so the whole agent-facing surface is in one place.
-4. "Export accepted" hands a `ReviewExport` (the accepted proposals with the
+   the page right now, so the whole agent-facing surface is in one place. Give
+   it `editor="vscode"` (or `cursor`, `zed`, `idea`, `webstorm`, or a
+   function returning a URL) and the scanned directory's absolute path as
+   `sourceRoot`, and every source location in the evidence becomes a link;
+   `onOpenSource` replaces that with your own handler.
+5. "Export accepted" hands a `ReviewExport` (the accepted proposals with the
    reviewer's edits, plus the rejected ids) to `onExport`, or downloads it as
    `tools.accepted.json`. `yarn infer-tools emit --accepted tools.accepted.json
    --write` then inserts marked `useWebMCPTool` skeletons into the owning
@@ -168,13 +188,38 @@ function DevTools() {
 ```
 
 The overlay groups tools by route (or scope, or file), filters by status and
-text, shows each proposal's evidence (binding, schema, replay and trace
-checks), and lets the reviewer edit the name, description, safety, lifetime and
-input schema before accepting. Keyboard: `/` searches, `A` accepts and moves
+text, shows each proposal's evidence (binding, schema, intent, mounted, replay
+and trace checks), and lets the reviewer edit the name, description, safety,
+lifetime and input schema before accepting. Handlers that only flip UI state
+and form inputs that had to be named after a placeholder arrive with a
+warning, so "Needs attention" surfaces them. Keyboard: `/` searches, `A` accepts and moves
 on, `R` rejects, arrows move, Escape closes. Decisions persist in
 `localStorage` under `storageKey` so a reload keeps the reviewer's place;
 pass `storageKey={null}` to keep them in memory. The entry is separate from
 `react-webmcp` so apps that never render it pay nothing for it.
+
+## Opting in, and the zero-overhead opt-out
+
+Exposing a tool surface to agents is a deliberate choice, so the proposal
+makes WebMCP opt-in per project: `"webmcp": {"enabled": true}` (or
+`"webmcp": true`) in package.json. The Babel plugin `react-webmcp/babel`
+enforces that at build time. Until a project opts in, it rewrites every import
+of `react-webmcp` and `react-webmcp/unstable_review` (static, `export …
+from`, `require`, dynamic `import()`) to `react-webmcp/unstable_noop`,
+whose exports do nothing: `useWebMCPTool` reports `supported: false`,
+`<ToolScope>` renders its children, `<ToolTree>` and `<ToolReview>` render
+nothing, and the registry is empty. The app compiles and runs unchanged while
+the registry, the renderer and the overlay stay out of the bundle.
+
+```js
+// babel.config.js
+module.exports = {plugins: ['react-webmcp/babel']};
+// or, bypassing package.json: [['react-webmcp/babel', {enabled: false}]]
+```
+
+The plugin reads the nearest package.json that mentions `webmcp`, walking up
+from each file, so a workspace can opt in once at its root; `root` points the
+lookup at a fixed directory instead.
 
 ## Fixture and contract check
 

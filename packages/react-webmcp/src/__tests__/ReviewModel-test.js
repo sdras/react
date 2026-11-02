@@ -380,4 +380,29 @@ describe('ReviewModel', () => {
     expect(Model.safetyLabel('mutate')).toBe('mutate');
     expect(Model.safetyLabel('irreversible')).toBe('consequential');
   });
+
+  it('builds editor links for source locations', () => {
+    const location = {file: 'src/Cart.js', line: 42, column: 7};
+    expect(Model.editorUrlFor(null, '/app', location)).toBe(null);
+    // Editor schemes take the absolute path after "file/", hence the //.
+    expect(Model.editorUrlFor('vscode', '/app/', location)).toBe(
+      'vscode://file//app/src/Cart.js:42:7',
+    );
+    expect(Model.editorUrlFor('cursor', null, location)).toBe(
+      'cursor://file/src/Cart.js:42:7',
+    );
+    expect(
+      Model.editorUrlFor('zed', '/app', {
+        file: '/abs/File.js',
+        line: 0,
+        column: 0,
+      }),
+    ).toBe('zed://file//abs/File.js:1:1');
+    expect(Model.editorUrlFor('idea', '/app', location)).toBe(
+      'idea://open?file=%2Fapp%2Fsrc%2FCart.js&line=42&column=7',
+    );
+    expect(
+      Model.editorUrlFor(loc => 'custom:' + loc.file, '/app', location),
+    ).toBe('custom:src/Cart.js');
+  });
 });

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-02T00:55:14.423Z",
+  "generatedAt": "2026-11-02T01:24:20.975Z",
   "source": {
     "dir": "fixtures/webmcp/src",
     "files": [
@@ -61,11 +61,6 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner TodoTools mounted on /"
@@ -73,11 +68,16 @@
         {
           "check": "replay",
           "level": "pending",
-          "summary": "not replayed: mutate tool"
+          "summary": "not replayed: mutate tool (add a journey step to run it)"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -119,23 +119,23 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner TodoTools mounted on /"
         },
         {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
+        },
+        {
           "check": "replay",
           "level": "ok",
-          "summary": "executeTool returned 77 chars: \"{\"content\":[{\"type\":\"text\",\"text\":\"1. Try the WebMCP pane\\n2. Add an item\"}]}\""
+          "summary": "journey shop step 3: executeTool returned \"{\"content\":[{\"type\":\"text\",\"text\":\"1. Try the WebMCP pane\\n2. Add an item\\n3. Bu\"; nothing visible changed"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -177,11 +177,6 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner TodoTools mounted on /"
@@ -189,11 +184,16 @@
         {
           "check": "replay",
           "level": "pending",
-          "summary": "not replayed: irreversible tool"
+          "summary": "not replayed: irreversible tool (add a journey step to run it)"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -235,11 +235,6 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "warn",
           "summary": "owner DuplicateTodoTool not mounted on /"
@@ -247,11 +242,16 @@
         {
           "check": "replay",
           "level": "pending",
-          "summary": "not replayed: mutate tool"
+          "summary": "not replayed: mutate tool (add a journey step to run it)"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -307,11 +307,6 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner SearchTools mounted on /"
@@ -319,11 +314,16 @@
         {
           "check": "replay",
           "level": "pending",
-          "summary": "not replayed: requires input"
+          "summary": "not replayed: requires input (add a journey step to run it)"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -376,11 +376,6 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Todos mounted on /"
@@ -389,10 +384,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "warn",
+          "summary": "journey shop step 2: click \"Add\" near \"Something to do\" touched Todos, but which handler ran is unclear"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -432,11 +432,6 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Todos mounted on /"
@@ -445,10 +440,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "warn",
+          "summary": "journey shop step 2: click \"Add\" near \"Something to do\" touched Todos, but which handler ran is unclear"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -457,10 +457,19 @@
       "qualifiedName": "submit_todos",
       "scopePath": [],
       "route": "/todos",
-      "description": "Submit the todos form in Todos.",
-      "safety": "irreversible",
+      "description": "Submit the todos form (new_todo) in Todos.",
+      "safety": "mutate",
       "lifetime": "view",
-      "inputSchema": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "new_todo": {
+            "type": "string",
+            "description": "Something to do"
+          }
+        },
+        "required": []
+      },
       "binding": {
         "kind": "form",
         "file": "App.js",
@@ -468,8 +477,10 @@
         "column": 7,
         "component": "Todos",
         "handler": null,
-        "params": [],
-        "paramStyle": "none"
+        "params": [
+          "new_todo"
+        ],
+        "paramStyle": "object"
       },
       "evidence": [
         {
@@ -484,13 +495,9 @@
         },
         {
           "check": "schema",
-          "level": "ok",
-          "summary": "schema derived from the form inputs"
-        },
-        {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
+          "level": "warn",
+          "property": "new_todo",
+          "summary": "\"new_todo\" is named after the input's aria-label; give the input a name"
         },
         {
           "check": "mounted",
@@ -501,10 +508,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "ok",
+          "summary": "journey shop step 2: click \"Add\" near \"Something to do\" ran onSubmit and the page changed"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -564,23 +576,23 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Inventory mounted on /"
         },
         {
-          "check": "replay",
+          "check": "trace",
           "level": "pending",
-          "summary": "not replayed: mutate tool"
+          "summary": "not exercised by shop"
+        },
+        {
+          "check": "replay",
+          "level": "ok",
+          "summary": "journey shop step 4: executeTool returned \"{\"content\":[{\"type\":\"text\",\"text\":\"Added 2 x Earl Grey to the cart.\"}]}\"; the page changed"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -622,23 +634,23 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Inventory mounted on /"
         },
         {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
+        },
+        {
           "check": "replay",
           "level": "ok",
-          "summary": "executeTool returned 57 chars: \"{\"content\":[{\"type\":\"text\",\"text\":\"The cart is empty.\"}]}\""
+          "summary": "journey shop step 5: executeTool returned \"{\"content\":[{\"type\":\"text\",\"text\":\"2 x Earl Grey\\nTotal: $18\"}]}\"; nothing visible changed"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -680,11 +692,6 @@
           "summary": "schema matches handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Inventory mounted on /"
@@ -692,11 +699,16 @@
         {
           "check": "replay",
           "level": "pending",
-          "summary": "not replayed: irreversible tool"
+          "summary": "not replayed: irreversible tool (add a journey step to run it)"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
         }
       ],
       "status": "exported",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": null
     },
     {
@@ -755,11 +767,6 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Cart mounted on /"
@@ -768,10 +775,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "ok",
+          "summary": "journey shop step 6: click \"Add\" near \"Green tea\" ran this handler and the page changed"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -811,11 +823,6 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Cart mounted on /"
@@ -824,10 +831,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "warn",
+          "summary": "journey shop step 7: click \"Suspend cart\" touched Cart, but which handler ran is unclear"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -867,11 +879,6 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
-        },
-        {
           "check": "mounted",
           "level": "ok",
           "summary": "owner Cart mounted on /"
@@ -880,10 +887,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "ok",
+          "summary": "journey shop step 9: click \"Reload inventory\" ran this handler and the page changed"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -923,9 +935,9 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
+          "check": "intent",
+          "level": "warn",
+          "summary": "only toggles setSuspended; looks like UI state, not an action an agent needs"
         },
         {
           "check": "mounted",
@@ -936,10 +948,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "ok",
+          "summary": "journey shop step 7: click \"Suspend cart\" ran this handler and the page changed"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     },
     {
@@ -979,9 +996,9 @@
           "summary": "schema derived from handler parameters"
         },
         {
-          "check": "trace",
-          "level": "pending",
-          "summary": "no journey recorded"
+          "check": "intent",
+          "level": "warn",
+          "summary": "only toggles setReviewOpen; looks like UI state, not an action an agent needs"
         },
         {
           "check": "mounted",
@@ -992,10 +1009,15 @@
           "check": "replay",
           "level": "pending",
           "summary": "replay runs once the tool exists"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "not exercised by shop"
         }
       ],
       "status": "proposed",
-      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "inferredAt": "2026-11-02T01:24:20.975Z",
       "provider": "fixture"
     }
   ]

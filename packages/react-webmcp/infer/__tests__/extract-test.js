@@ -393,3 +393,114 @@ describe('infer extract', () => {
     ).toEqual([]);
   });
 });
+
+describe('infer extract tuning', () => {
+  const NOW_ = '2026-11-01T00:00:00.000Z';
+  function run(source, file = 'App.js') {
+    return extractFromSource(source, {file, now: NOW_});
+  }
+
+  it('flags handlers that only flip UI state instead of dropping them', () => {
+    const proposals = run(`
+import * as React from 'react';
+const {useState} = React;
+function Panel() {
+  const [open, setOpen] = useState(false);
+  const [suspended, setSuspended] = useState(false);
+  const [count, setCount] = useState(0);
+  const toggleSuspended = () => setSuspended(value => !value);
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen(true)}>Review agent tools</button>
+      <button type="button" onClick={toggleSuspended}>Suspend</button>
+      <button type="button" onClick={() => setCount(count + 1)}>Count</button>
+    </div>
+  );
+}
+`);
+    const byName = {};
+    proposals.forEach(proposal => {
+      byName[proposal.name] = proposal;
+    });
+    expect(Object.keys(byName).sort()).toEqual([
+      'click_count',
+      'click_review_agent_tools',
+      'toggle_suspended',
+    ]);
+    const intent = proposal =>
+      proposal.evidence
+        .filter(row => row.check === 'intent')
+        .map(row => row.summary);
+    expect(intent(byName.click_review_agent_tools)).toEqual([
+      'only toggles setOpen; looks like UI state, not an action an agent needs',
+    ]);
+    expect(intent(byName.toggle_suspended)).toEqual([
+      'only toggles setSuspended; looks like UI state, not an action an agent needs',
+    ]);
+    expect(intent(byName.click_count)).toEqual([]);
+  });
+
+  it('names form inputs without a name after what the page shows, and says so', () => {
+    const proposals = run(`
+import * as React from 'react';
+function Todos({add}) {
+  const [draft, setDraft] = React.useState('');
+  return (
+    <section>
+      <h2>Todos</h2>
+      <form onSubmit={event => { event.preventDefault(); add(draft); }}>
+        <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Something to do" />
+        <label htmlFor="qty">Quantity</label>
+        <input id="qty" type="number" />
+        <input aria-label="Note" />
+        <button type="submit">Add</button>
+      </form>
+    </section>
+  );
+}
+`);
+    const form = proposals.find(proposal => proposal.binding.kind === 'form');
+    expect(form.name).toBe('submit_todos');
+    expect(form.safety).toBe('mutate');
+    expect(Object.keys(form.inputSchema.properties)).toEqual([
+      'something_to_do',
+      'qty',
+      'note',
+    ]);
+    expect(form.inputSchema.properties.qty.type).toBe('number');
+    expect(form.inputSchema.properties.qty.description).toBe('Quantity');
+    expect(
+      form.evidence
+        .filter(row => row.check === 'schema')
+        .map(row => [row.level, row.property, row.summary]),
+    ).toEqual([
+      [
+        'warn',
+        'something_to_do',
+        '"something_to_do" is named after the input\'s placeholder; give the input a name',
+      ],
+      [
+        'warn',
+        'qty',
+        '"qty" is named after the input\'s id; give the input a name',
+      ],
+      [
+        'warn',
+        'note',
+        '"note" is named after the input\'s aria-label; give the input a name',
+      ],
+    ]);
+  });
+
+  it('treats submission as a mutation unless the object is consequential', () => {
+    const source = name => `
+import * as React from 'react';
+function Page({send}) {
+  return <form aria-label="${name}" onSubmit={e => { e.preventDefault(); send(); }}><input name="email" /></form>;
+}
+`;
+    expect(run(source('newsletter'))[0].safety).toBe('mutate');
+    expect(run(source('order'))[0].safety).toBe('irreversible');
+    expect(run(source('payment details'))[0].safety).toBe('irreversible');
+  });
+});

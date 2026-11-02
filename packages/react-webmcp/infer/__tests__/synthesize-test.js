@@ -149,13 +149,9 @@ describe('infer synthesize', () => {
     ]);
   });
 
-  it('refuses providers that are not implemented yet', () => {
-    expect(() => getProvider('anthropic')).toThrow(
-      'provider anthropic is not implemented yet; use --provider fixture',
-    );
-    expect(() => getProvider('gemini')).toThrow(
-      'provider gemini is not implemented yet; use --provider fixture',
-    );
+  it('knows the network providers and rejects unknown names', () => {
+    expect(getProvider('anthropic').name).toBe('anthropic:claude-opus-5-5');
+    expect(getProvider('gemini').name).toBe('gemini:gemini-2.5-flash');
     expect(() => getProvider('nope')).toThrow('unknown provider "nope"');
   });
 

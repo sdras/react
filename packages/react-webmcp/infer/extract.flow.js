@@ -77,6 +77,9 @@ type ParamInfo = {
   type: string,
   description: string,
   required: boolean,
+  // Set when a form input had no `name` and the property was named after
+  // another attribute instead ('id', 'aria-label', 'label', 'placeholder').
+  derivedFrom?: string,
 };
 
 type Wiring = {prop: string, element: string};
@@ -156,6 +159,8 @@ type Candidate = {
   resolvedCallee: Node | null,
   isInline: boolean,
   formHandler: string | null,
+  // The state setter when the handler only flips a boolean (UI state).
+  uiOnly: string | null,
 };
 
 const SOURCE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx'];
@@ -173,7 +178,10 @@ const UI_LOCAL_STATE =
   /^(set)?(draft|open|hover|focus|show|visible|expanded|loading|modal)/i;
 const READ_VERBS = /^(get|list|search|find|read|fetch|load|show|view|count)$/;
 const IRREVERSIBLE_VERBS =
-  /^(delete|remove|clear|purchase|pay|place|submit|send|publish|destroy|reset|cancel|checkout)$/;
+  /^(delete|remove|clear|purchase|pay|place|send|publish|destroy|reset|cancel|checkout)$/;
+// Objects that make an otherwise ordinary verb consequential (submit_order).
+const CONSEQUENTIAL_WORDS =
+  /^(order|orders|payment|payments|pay|purchase|checkout|charge|refund|transfer|delete|destroy|cancel|publish|send)$/;
 const NUMERIC_PARAM =
   /^(quantity|qty|count|amount|price|total|index|page|limit|size|id)$|(Quantity|Qty|Count|Amount|Price|Total|Index|Limit|Size|Id)$/;
 const BOOLEAN_PARAM =
@@ -214,6 +222,11 @@ function safetyFromName(name: string): Safety {
   }
   if (IRREVERSIBLE_VERBS.test(verb)) {
     return 'irreversible';
+  }
+  for (let i = 1; i < words.length; i++) {
+    if (CONSEQUENTIAL_WORDS.test(words[i])) {
+      return 'irreversible';
+    }
   }
   return 'mutate';
 }
@@ -1216,6 +1229,48 @@ function isUILocalOnly(
   return analysis.setterCalls.every(name => UI_LOCAL_STATE.test(name));
 }
 
+// setOpen(true), setOpen(!open), setOpen(value => !value): a handler that only
+// flips a flag. Returns the setter's name, or null.
+function uiOnlySetter(analysis: HandlerAnalysis): string | null {
+  const call = analysis.singleCall;
+  if (
+    call == null ||
+    call.callee.type !== 'Identifier' ||
+    !SETTER_NAME.test(call.callee.name) ||
+    call.arguments.length !== 1 ||
+    analysis.effectCalls.length > 0 ||
+    analysis.propCalls.length > 0
+  ) {
+    return null;
+  }
+  const setter = call.callee.name;
+  let argument = call.arguments[0];
+  if (
+    argument.type === 'ArrowFunctionExpression' ||
+    argument.type === 'FunctionExpression'
+  ) {
+    let body = argument.body;
+    if (body.type === 'BlockStatement') {
+      if (
+        body.body.length !== 1 ||
+        body.body[0].type !== 'ReturnStatement' ||
+        body.body[0].argument == null
+      ) {
+        return null;
+      }
+      body = body.body[0].argument;
+    }
+    argument = body;
+  }
+  if (argument.type === 'BooleanLiteral') {
+    return setter;
+  }
+  if (argument.type === 'UnaryExpression' && argument.operator === '!') {
+    return setter;
+  }
+  return null;
+}
+
 function isOnlyInputChangeWiring(wiring: Array<Wiring>): boolean {
   return wiring.every(
     entry =>
@@ -1275,6 +1330,7 @@ function makeHandlerCandidate(
     resolvedCallee: null,
     isInline,
     formHandler: null,
+    uiOnly: null,
   };
 }
 
@@ -1352,17 +1408,17 @@ function componentCandidates(
       continue;
     }
     const {params, style} = readParams(named.node);
-    candidates.push(
-      makeHandlerCandidate(
-        component,
-        snakeCase(named.name),
-        named.name,
-        named.node,
-        params,
-        style,
-        false,
-      ),
+    const candidate = makeHandlerCandidate(
+      component,
+      snakeCase(named.name),
+      named.name,
+      named.node,
+      params,
+      style,
+      false,
     );
+    candidate.uiOnly = uiOnlySetter(analysis);
+    candidates.push(candidate);
   }
 
   // Inline handlers on event props.
@@ -1459,17 +1515,17 @@ function componentCandidates(
     const label = elementLabel(inline.elementPath.node);
     const eventWord = inline.prop.slice(2).toLowerCase();
     const suffix = label == null ? `L${lineOf(fn)}` : snakeCase(label);
-    candidates.push(
-      makeHandlerCandidate(
-        component,
-        `${eventWord}_${suffix}`,
-        null,
-        fn,
-        [],
-        'none',
-        true,
-      ),
+    const inlineCandidate = makeHandlerCandidate(
+      component,
+      `${eventWord}_${suffix}`,
+      null,
+      fn,
+      [],
+      'none',
+      true,
     );
+    inlineCandidate.uiOnly = uiOnlySetter(analysis);
+    candidates.push(inlineCandidate);
   }
 
   // Forms.
@@ -1511,9 +1567,43 @@ function formInputs(formPath: NodePath): Array<ParamInfo> {
       ) {
         return;
       }
-      const name = jsxAttributeString(opening, 'name');
+      // Label text for this input, through htmlFor/id or an enclosing <label>.
+      let labelText: string | null = null;
+      const inputId = jsxAttributeString(opening, 'id');
+      if (inputId != null && labelsFor.has(inputId)) {
+        labelText = labelsFor.get(inputId) || null;
+      }
+      if (labelText == null) {
+        const enclosingLabel = elementPath.findParent(
+          parent =>
+            parent.isJSXElement() &&
+            jsxElementName(parent.node.openingElement) === 'label',
+        );
+        if (enclosingLabel != null) {
+          labelText = directText(enclosingLabel.node);
+        }
+      }
+      let name = jsxAttributeString(opening, 'name');
+      let derivedFrom: string | null = null;
       if (name == null || name === '') {
-        return;
+        // No name: fall back to what the page shows for the field, and say so
+        // in the evidence so the reviewer renames it or names the input.
+        const fallbacks: Array<[string, string | null]> = [
+          ['id', inputId],
+          ['aria-label', jsxAttributeString(opening, 'aria-label')],
+          ['label', labelText],
+          ['placeholder', jsxAttributeString(opening, 'placeholder')],
+        ];
+        for (let i = 0; i < fallbacks.length && name == null; i++) {
+          const value = fallbacks[i][1];
+          if (value != null && value.trim() !== '') {
+            name = snakeCase(stripParentheticals(value));
+            derivedFrom = fallbacks[i][0];
+          }
+        }
+        if (name == null || name === '') {
+          return;
+        }
       }
       const inputType = (
         jsxAttributeString(opening, 'type') || ''
@@ -1524,32 +1614,21 @@ function formInputs(formPath: NodePath): Array<ParamInfo> {
       } else if (inputType === 'checkbox') {
         type = 'boolean';
       }
-      let description =
+      const description =
         jsxAttributeString(opening, 'placeholder') ||
         jsxAttributeString(opening, 'aria-label') ||
-        null;
-      if (description == null) {
-        const id = jsxAttributeString(opening, 'id');
-        if (id != null && labelsFor.has(id)) {
-          description = labelsFor.get(id) || null;
-        }
-      }
-      if (description == null) {
-        const label = elementPath.findParent(
-          parent =>
-            parent.isJSXElement() &&
-            jsxElementName(parent.node.openingElement) === 'label',
-        );
-        if (label != null) {
-          description = directText(label.node);
-        }
-      }
-      inputs.push({
+        labelText ||
+        '';
+      const input: ParamInfo = {
         name,
         type,
-        description: description == null ? '' : description,
+        description,
         required: hasJSXAttribute(opening, 'required'),
-      });
+      };
+      if (derivedFrom != null) {
+        input.derivedFrom = derivedFrom;
+      }
+      inputs.push(input);
     },
   });
   return inputs;
@@ -1619,6 +1698,7 @@ function formCandidate(
     resolvedCallee: null,
     isInline: form.handlerName == null,
     formHandler: form.handlerName,
+    uiOnly: null,
   };
 }
 
@@ -1855,18 +1935,43 @@ function candidateProposal(
           summary: `binding ${subject} exists`,
           location,
         };
-  const evidence: Array<ProposalEvidence> = [
-    bindingEvidence,
-    {
+  const evidence: Array<ProposalEvidence> = [bindingEvidence];
+  const derivedParams = candidate.params.filter(
+    param => param.derivedFrom != null,
+  );
+  if (derivedParams.length > 0) {
+    for (let i = 0; i < derivedParams.length; i++) {
+      const param = derivedParams[i];
+      evidence.push({
+        check: 'schema',
+        level: 'warn',
+        property: param.name,
+        summary: `"${param.name}" is named after the input's ${
+          param.derivedFrom != null ? param.derivedFrom : 'text'
+        }; give the input a name`,
+      });
+    }
+  } else {
+    evidence.push({
       check: 'schema',
       level: 'ok',
       summary:
         candidate.kind === 'form'
           ? 'schema derived from the form inputs'
           : 'schema derived from handler parameters',
-    },
-    ...pendingEvidence(),
-  ];
+    });
+  }
+  if (candidate.uiOnly != null) {
+    evidence.push({
+      check: 'intent',
+      level: 'warn',
+      summary: `only toggles ${candidate.uiOnly}; looks like UI state, not an action an agent needs`,
+    });
+  }
+  const pending = pendingEvidence();
+  for (let i = 0; i < pending.length; i++) {
+    evidence.push(pending[i]);
+  }
   const handlerPart =
     candidate.handler != null ? candidate.handler : `L${line}`;
   const status: ProposalStatus = 'proposed';

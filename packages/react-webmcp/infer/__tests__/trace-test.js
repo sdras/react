@@ -9,7 +9,12 @@
 
 'use strict';
 
-const {applyTrace, parseTraceArgs} = require('../trace.flow');
+const {
+  applyJourneys,
+  applyTrace,
+  parseTraceArgs,
+  stepMatch,
+} = require('../trace.flow');
 
 function proposal(overrides) {
   return {
@@ -180,10 +185,10 @@ describe('infer trace', () => {
       summary: 'executeTool returned 42 chars: "1. Green tea"',
     });
     expect(evidenceByCheck(traced, 1).replay.summary).toBe(
-      'not replayed: requires input',
+      'not replayed: requires input (add a journey step to run it)',
     );
     expect(evidenceByCheck(traced, 2).replay.summary).toBe(
-      'not replayed: irreversible tool',
+      'not replayed: irreversible tool (add a journey step to run it)',
     );
     expect(evidenceByCheck(traced, 3).replay).toEqual({
       check: 'replay',
@@ -193,5 +198,175 @@ describe('infer trace', () => {
     expect(evidenceByCheck(traced, 4).replay.summary).toBe(
       'replay runs once the tool exists',
     );
+  });
+
+  describe('journeys', () => {
+    function step(overrides) {
+      return {
+        index: 1,
+        kind: 'click',
+        label: 'click "Add"',
+        ok: true,
+        error: null,
+        owners: ['Inventory', 'Cart', 'App'],
+        handler: null,
+        handlerSource: null,
+        changed: true,
+        output: null,
+        ...overrides,
+      };
+    }
+
+    it('scores how strongly a step exercised a proposal', () => {
+      const named = proposal({
+        binding: {...proposal().binding, component: 'Cart', handler: 'addItem'},
+      });
+      expect(stepMatch(step({handler: 'addItem'}), named)).toBe(2);
+      // Touched Cart, but Inventory is the nearest owner: no credit.
+      expect(stepMatch(step({handler: 'clearCart'}), named)).toBe(0);
+      expect(
+        stepMatch(step({handler: 'clearCart', owners: ['Cart', 'App']}), named),
+      ).toBe(1);
+      // An inline arrow that forwards to the handler counts as running it.
+      expect(
+        stepMatch(step({handlerSource: '() => addItem(item.sku, 1)'}), named),
+      ).toBe(2);
+      expect(
+        stepMatch(
+          step({handlerSource: '() => addItems()', owners: ['Cart']}),
+          named,
+        ),
+      ).toBe(1);
+      // Typing credits only the onChange handler itself.
+      expect(stepMatch(step({kind: 'fill', owners: ['Cart']}), named)).toBe(0);
+      expect(
+        stepMatch(
+          step({kind: 'fill', owners: ['Cart'], handler: 'addItem'}),
+          named,
+        ),
+      ).toBe(2);
+      expect(stepMatch(step({owners: ['Todos']}), named)).toBe(0);
+      expect(stepMatch(step({kind: 'tool'}), named)).toBe(0);
+
+      const inline = proposal({
+        name: 'click_add',
+        binding: {...proposal().binding, component: 'Inventory', handler: null},
+      });
+      expect(stepMatch(step({handler: null}), inline)).toBe(2);
+      expect(
+        stepMatch(step({handler: null, label: 'click "Clear"'}), inline),
+      ).toBe(1);
+      expect(
+        stepMatch(
+          step({handler: null, label: 'click "Add" near "Tea"'}),
+          inline,
+        ),
+      ).toBe(2);
+
+      const form = proposal({
+        name: 'submit_todos',
+        binding: {
+          ...proposal().binding,
+          kind: 'form',
+          component: 'Todos',
+          handler: null,
+        },
+      });
+      expect(
+        stepMatch(step({owners: ['Todos'], handler: 'onSubmit'}), form),
+      ).toBe(2);
+      expect(stepMatch(step({owners: ['Todos'], handler: null}), form)).toBe(1);
+      expect(stepMatch(step({kind: 'fill', owners: ['Todos']}), form)).toBe(0);
+    });
+
+    it('writes trace and replay evidence from journey runs', () => {
+      const runs = [
+        {
+          name: 'shop',
+          steps: [
+            step({index: 1, handler: 'addItem'}),
+            step({
+              index: 2,
+              kind: 'tool',
+              label: 'tool cart_list_items',
+              owners: [],
+              changed: false,
+              output: '{"content":[]}',
+            }),
+            step({index: 3, label: 'click "Clear"', owners: ['Cart', 'App']}),
+            step({
+              index: 4,
+              ok: false,
+              error: 'no element',
+              owners: [],
+              changed: false,
+            }),
+          ],
+        },
+      ];
+      const traced = applyJourneys(
+        file([
+          proposal({
+            binding: {
+              ...proposal().binding,
+              component: 'Cart',
+              handler: 'addItem',
+            },
+          }),
+          proposal({
+            id: 'clear',
+            name: 'clear_cart',
+            qualifiedName: 'cart_clear_cart',
+            binding: {
+              ...proposal().binding,
+              component: 'Cart',
+              handler: 'clearCart',
+            },
+          }),
+          proposal({
+            id: 'list',
+            name: 'list_items',
+            qualifiedName: 'cart_list_items',
+            safety: 'read',
+            status: 'exported',
+          }),
+          proposal({
+            id: 'todo',
+            name: 'add_todo',
+            qualifiedName: 'add_todo',
+            binding: {
+              ...proposal().binding,
+              component: 'Todos',
+              handler: 'addTodo',
+            },
+          }),
+        ]),
+        runs,
+      );
+      expect(evidenceByCheck(traced, 0).trace).toEqual({
+        check: 'trace',
+        level: 'ok',
+        summary:
+          'journey shop step 1: click "Add" ran addItem and the page changed',
+      });
+      expect(evidenceByCheck(traced, 1).trace).toEqual({
+        check: 'trace',
+        level: 'warn',
+        summary:
+          'journey shop step 3: click "Clear" touched Cart, but which handler ran is unclear',
+      });
+      expect(evidenceByCheck(traced, 2).replay).toEqual({
+        check: 'replay',
+        level: 'ok',
+        summary:
+          'journey shop step 2: executeTool returned "{"content":[]}"; nothing visible changed',
+      });
+      expect(evidenceByCheck(traced, 3).trace).toEqual({
+        check: 'trace',
+        level: 'pending',
+        summary: 'not exercised by shop',
+      });
+      expect(applyJourneys(file([proposal()]), [])).toEqual(file([proposal()]));
+    });
   });
 });

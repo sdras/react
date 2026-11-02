@@ -28,6 +28,7 @@
     "react": "^19.3.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@babel/plugin-transform-flow-strip-types": "^7.10.4",
     "@babel/register": "^7.14.5",
     "chrome-devtools-mcp": "1.8.0",
@@ -40,7 +41,9 @@
   "files": [
     "LICENSE",
     "README.md",
+    "babel.js",
     "index.js",
+    "unstable_noop.js",
     "unstable_review.js",
     "cjs/"
   ]

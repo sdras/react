@@ -991,6 +991,66 @@ jobs:
           path: tmp/react-devtools-cdt-mcp-e2e
           if-no-files-found: warn
 
+  run_react_webmcp_contract_check:
+    name: Run react-webmcp contract check
+    needs: [build_and_lint, runtime_playwright_chromium_cache]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Ensure clean build directory
+        run: rm -rf build
+      - name: Restore archived build
+        id: download_build
+        uses: actions/download-artifact@v4
+        background: true
+        with:
+          pattern: _build_*
+          path: build
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Restore cached node_modules
+        uses: actions/cache/restore@v4
+        id: node_modules
+        with:
+          path: |
+            **/node_modules
+          key: runtime-node_modules-v10-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          # Don't use restore-keys here. Otherwise the cache grows indefinitely.
+      - run: yarn install --frozen-lockfile
+        if: steps.node_modules.outputs.cache-hit != 'true'
+      - name: Install the webmcp fixture
+        run: yarn --cwd fixtures/webmcp install --frozen-lockfile
+      - name: Restore Playwright Chromium
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-v6-${{ runner.arch }}-${{ runner.os }}-${{ needs.runtime_playwright_chromium_cache.outputs.playwright_version }}
+          fail-on-cache-miss: true
+      - name: Check Playwright Chromium version
+        id: playwright_chromium
+        run: |
+          echo "executable_path=$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" >> "$GITHUB_OUTPUT"
+          "$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" --version
+      - name: Wait for archived build
+        wait: download_build
+      # Drives fixtures/webmcp through chrome-devtools-mcp and checks that every
+      # React-owned agent tool is grounded and matches tools.manifest.json.
+      - name: Run react-webmcp contract check
+        run: yarn --cwd packages/react-webmcp test:validate:ci
+        env:
+          CHROME_EXECUTABLE_PATH: ${{ steps.playwright_chromium.outputs.executable_path }}
+      - name: Archive react-webmcp contract check logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-webmcp-contract-check-logs
+          path: tmp/react-webmcp-validate
+          if-no-files-found: warn
+
   # ----- SIZEBOT -----
   sizebot:
     if: ${{ github.event_name == 'pull_request' && github.ref_name != 'main' && github.event.pull_request.base.ref == 'main' }}

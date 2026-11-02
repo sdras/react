@@ -30,6 +30,7 @@ import type {
 import type {
   Chip,
   DecisionMap,
+  Editor,
   GroupBy,
   ReviewEntry,
   ReviewGroup,
@@ -44,6 +45,7 @@ import {
   buildExport,
   chipCounts,
   describeTimeSince,
+  editorUrlFor,
   filterEntries,
   formatLocation,
   groupEntries,
@@ -79,8 +81,15 @@ export type ToolReviewProps = {
   // Receives the accepted tools (with edits applied) and the rejected ids.
   // Without a handler the overlay downloads `tools.accepted.json`.
   onExport?: (data: ReviewExport) => void,
-  // Called when a source location in the evidence is clicked.
+  // Called when a source location in the evidence is clicked. Without it,
+  // `editor` turns locations into links.
   onOpenSource?: (location: SourceLocation) => void,
+  // Which editor to open source locations in ('vscode', 'cursor', 'zed',
+  // 'idea', 'webstorm', or a function returning a URL). Proposal files are
+  // relative to the scanned directory; give that directory's absolute path as
+  // `sourceRoot` so the links resolve.
+  editor?: Editor | null,
+  sourceRoot?: string | null,
   // Decisions persist in localStorage under this key so a reload keeps the
   // reviewer's progress. Pass null to keep them in memory only.
   storageKey?: string | null,
@@ -204,14 +213,52 @@ function SafetyTag({safety}: {safety: Safety}): React.Node {
   );
 }
 
+function LocationLink({
+  location,
+  onOpenSource,
+  editor,
+  sourceRoot,
+}: {
+  location: SourceLocation,
+  onOpenSource: ?(location: SourceLocation) => void,
+  editor: ?Editor,
+  sourceRoot: ?string,
+}): React.Node {
+  const label = formatLocation(location);
+  if (onOpenSource != null) {
+    const open = onOpenSource;
+    return (
+      <button
+        type="button"
+        className="rwr-EvLink"
+        onClick={() => open(location)}>
+        {label}
+      </button>
+    );
+  }
+  const href = editorUrlFor(editor, sourceRoot, location);
+  if (href != null) {
+    return (
+      <a className="rwr-EvLink" href={href} title={href}>
+        {label}
+      </a>
+    );
+  }
+  return <span className="rwr-Mono">{label}</span>;
+}
+
 function EvidenceCard({
   entry,
   now,
   onOpenSource,
+  editor,
+  sourceRoot,
 }: {
   entry: ReviewEntry,
   now: Date,
   onOpenSource: ?(location: SourceLocation) => void,
+  editor: ?Editor,
+  sourceRoot: ?string,
 }): React.Node {
   const {checks} = entry;
   const evidence = entry.original.evidence;
@@ -252,22 +299,12 @@ function EvidenceCard({
             {item.location != null ? (
               <>
                 {' · '}
-                {onOpenSource != null ? (
-                  <button
-                    type="button"
-                    className="rwr-EvLink"
-                    onClick={() => {
-                      if (item.location != null) {
-                        onOpenSource(item.location);
-                      }
-                    }}>
-                    {formatLocation(item.location)}
-                  </button>
-                ) : (
-                  <span className="rwr-Mono">
-                    {formatLocation(item.location)}
-                  </span>
-                )}
+                <LocationLink
+                  location={item.location}
+                  onOpenSource={onOpenSource}
+                  editor={editor}
+                  sourceRoot={sourceRoot}
+                />
               </>
             ) : null}
           </span>
@@ -435,6 +472,8 @@ export function ToolReview(props: ToolReviewProps): React.Node {
     onClose,
     onExport,
     onOpenSource,
+    editor = null,
+    sourceRoot = null,
     storageKey = 'default',
     defaultGroupBy = 'route',
     title = 'Review agent tools',
@@ -926,6 +965,8 @@ export function ToolReview(props: ToolReviewProps): React.Node {
                   entry={selected}
                   now={now}
                   onOpenSource={onOpenSource}
+                  editor={editor}
+                  sourceRoot={sourceRoot}
                 />
                 <div className="rwr-Note">
                   {selected.live
@@ -965,6 +1006,8 @@ export function ToolReview(props: ToolReviewProps): React.Node {
                     entry={selected}
                     now={now}
                     onOpenSource={onOpenSource}
+                    editor={editor}
+                    sourceRoot={sourceRoot}
                   />
                   <label className="rwr-Field">
                     <span className="rwr-Label">Name</span>

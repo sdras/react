@@ -2,6 +2,9 @@
   "private": true,
   "name": "react-webmcp-fixture",
   "version": "0.0.0",
+  "webmcp": {
+    "enabled": true
+  },
   "scripts": {
     "start": "cross-env NODE_ENV=development webpack serve --config webpack.config.js"
   },

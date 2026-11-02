@@ -1,0 +1,15 @@
+{
+  "name": "shop",
+  "description": "Add a todo through the form, then exercise the cart tools and the Suspense toggle. Run with `yarn infer-tools trace --in fixtures/webmcp/tools.proposals.json --journey fixtures/webmcp/journeys/shop.json`.",
+  "steps": [
+    {"fill": "Something to do", "value": "Buy tea"},
+    {"click": "Add", "near": "Something to do"},
+    {"tool": "todos_list_todos"},
+    {"tool": "cart_add_item", "input": {"sku": "TEA-002", "quantity": 2}},
+    {"tool": "cart_list_items"},
+    {"click": "Add", "near": "Green tea"},
+    {"click": "Suspend cart"},
+    {"click": "Resume cart"},
+    {"click": "Reload inventory"}
+  ]
+}

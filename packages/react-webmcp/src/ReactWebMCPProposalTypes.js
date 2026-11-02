@@ -38,7 +38,10 @@ export type EvidenceCheck =
   // The owning component was mounted during a traced journey.
   | 'mounted'
   // A user journey (CUJ) exercised this action.
-  | 'trace';
+  | 'trace'
+  // Whether this looks like an action an agent would need at all (for
+  // example, a handler that only flips UI state does not).
+  | 'intent';
 
 export type SourceLocation = {
   // Path relative to the directory `infer extract` was pointed at.

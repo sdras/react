@@ -63,6 +63,8 @@ module.exports = {
       process: 'process/browser',
     }),
     new Webpack.DefinePlugin({
+      // Lets the review overlay turn proposal file paths into editor links.
+      __WEBMCP_SOURCE_ROOT__: JSON.stringify(resolve(__dirname, 'src')),
       __DEV__,
       __EXPERIMENTAL__: true,
       __EXTENSION__: false,

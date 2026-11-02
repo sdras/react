@@ -589,6 +589,63 @@ export function propertyFlags(
   return flags;
 }
 
+export type Editor =
+  | 'vscode'
+  | 'cursor'
+  | 'zed'
+  | 'idea'
+  | 'webstorm'
+  | ((location: SourceLocation) => string);
+
+function joinSourcePath(
+  sourceRoot: string | null | void,
+  file: string,
+): string {
+  if (sourceRoot == null || sourceRoot === '' || file.charAt(0) === '/') {
+    return file;
+  }
+  return sourceRoot.replace(/\/+$/, '') + '/' + file.replace(/^\.?\/+/, '');
+}
+
+// A link that opens a source location in the developer's editor, or null when
+// no editor is configured. Paths are joined with `sourceRoot` so the file in a
+// proposal (relative to the directory `infer extract` scanned) becomes
+// absolute, which is what editor URL schemes want.
+export function editorUrlFor(
+  editor: Editor | null | void,
+  sourceRoot: string | null | void,
+  location: SourceLocation,
+): string | null {
+  if (editor == null) {
+    return null;
+  }
+  if (typeof editor === 'function') {
+    return editor(location);
+  }
+  const file = joinSourcePath(sourceRoot, location.file);
+  const line = location.line > 0 ? location.line : 1;
+  const column = location.column > 0 ? location.column : 1;
+  switch (editor) {
+    case 'vscode':
+    case 'cursor':
+    case 'zed':
+      return editor + '://file/' + file + ':' + line + ':' + column;
+    case 'idea':
+    case 'webstorm':
+      return (
+        editor +
+        '://open?file=' +
+        encodeURIComponent(file) +
+        '&line=' +
+        line +
+        '&column=' +
+        column
+      );
+    default:
+      return null;
+  }
+}
+
 export function formatLocation(location: SourceLocation | null | void): string {
   if (location == null) {
     return '';

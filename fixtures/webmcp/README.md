@@ -61,7 +61,13 @@ the fixture's components:
 ```sh
 yarn infer-tools extract --src fixtures/webmcp/src --out fixtures/webmcp/tools.proposals.json
 yarn infer-tools synthesize --in fixtures/webmcp/tools.proposals.json
+yarn infer-tools trace --in fixtures/webmcp/tools.proposals.json --journey fixtures/webmcp/journeys/shop.json
 ```
+
+The last command needs Node 22.12 or newer (see below). `journeys/shop.json`
+fills the todo form, calls the cart tools, and toggles "Suspend cart", so the
+proposals carry mounted, replay and trace evidence. Source locations in the
+overlay open in VS Code; change `editor` in `src/App.js` for another editor.
 
 The seven tools the fixture already registers show up as exported; the other
 proposals come from its handlers and its form. Accept or reject them, then

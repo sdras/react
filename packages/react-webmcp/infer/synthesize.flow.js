@@ -11,9 +11,10 @@
 
 // `infer synthesize`: rewrites the placeholder names and descriptions that
 // `extract` produced into ones an agent can act on. The work is delegated to
-// a provider; only the deterministic `fixture` provider is implemented here.
-// Network providers (anthropic, gemini) implement the same `SynthesizeProvider`
-// shape and plug into `getProvider` without the CLI changing.
+// a provider: the deterministic `fixture` provider (no network), or the
+// `anthropic` and `gemini` providers in ./providers, which show the model the
+// source around each binding and ask for a name and description. All three
+// implement `SynthesizeProvider`.
 
 import type {
   ProposalsFile,
@@ -57,10 +58,11 @@ function getProvider(name: string): SynthesizeProvider {
   if (name === 'fixture') {
     return require('./providers/fixture.flow').createFixtureProvider();
   }
-  if (KNOWN_PROVIDERS.indexOf(name) !== -1) {
-    throw new Error(
-      `provider ${name} is not implemented yet; use --provider fixture`,
-    );
+  if (name === 'anthropic') {
+    return require('./providers/anthropic.flow').createAnthropicProvider();
+  }
+  if (name === 'gemini') {
+    return require('./providers/gemini.flow').createGeminiProvider();
   }
   throw new Error(
     `unknown provider "${name}"; expected one of ${KNOWN_PROVIDERS.join(', ')}`,

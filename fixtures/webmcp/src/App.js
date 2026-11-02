@@ -457,12 +457,9 @@ export default function App() {
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
         storageKey="fixtures/webmcp"
-        onOpenSource={location => {
-          // A real integration would open the editor; the fixture just says
-          // where the binding lives.
-          // eslint-disable-next-line no-console
-          console.info('[react-webmcp] ' + location.file + ':' + location.line);
-        }}
+        // Source locations open in VS Code; swap the editor for yours.
+        editor="vscode"
+        sourceRoot={__WEBMCP_SOURCE_ROOT__}
       />
     </main>
   );

@@ -910,6 +910,29 @@ const bundles = [
       }),
   },
 
+  /******* React WebMCP Babel opt-out plugin *******/
+  {
+    bundleTypes: __EXPERIMENTAL__ ? [NODE_DEV, NODE_PROD] : [],
+    moduleType: ISOMORPHIC,
+    entry: 'react-webmcp/babel',
+    global: 'ReactWebMCPBabelPlugin',
+    minifyWithProdErrorCodes: false,
+    wrapWithModuleBoundaries: false,
+    // Node builtins the plugin reads package.json with.
+    externals: ['fs', 'path'],
+  },
+
+  /******* React WebMCP no-op stand-in (what the Babel plugin imports) *******/
+  {
+    bundleTypes: __EXPERIMENTAL__ ? [NODE_DEV, NODE_PROD] : [],
+    moduleType: ISOMORPHIC,
+    entry: 'react-webmcp/unstable_noop',
+    global: 'ReactWebMCPNoop',
+    minifyWithProdErrorCodes: false,
+    wrapWithModuleBoundaries: false,
+    externals: ['react'],
+  },
+
   /******* React Native Fabric *******/
   {
     bundleTypes: __EXPERIMENTAL__
