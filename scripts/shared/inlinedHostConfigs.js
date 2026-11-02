@@ -717,7 +717,7 @@ module.exports = [
   },
   {
     shortName: 'webmcp',
-    entryPoints: ['react-webmcp'],
+    entryPoints: ['react-webmcp', 'react-webmcp/unstable_review'],
     paths: [
       'react-webmcp',
       'react-server/src/ReactFlightServerConfigDebugNoop.js',

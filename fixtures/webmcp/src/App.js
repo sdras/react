@@ -8,6 +8,10 @@ import {
   unstable_getRegisteredTools,
   unstable_subscribeToRegisteredTools,
 } from 'react-webmcp';
+import {ToolReview} from 'react-webmcp/unstable_review';
+// Written by `yarn infer-tools extract --src fixtures/webmcp/src`; the review
+// overlay below lets a developer accept, edit or reject these proposals.
+import proposalsFile from '../tools.proposals.json';
 
 const {useState, useSyncExternalStore, Suspense} = React;
 
@@ -422,6 +426,7 @@ function ToolsPanel() {
 
 export default function App() {
   const [todos, setTodos] = useState(['Try the WebMCP pane', 'Add an item']);
+  const [reviewOpen, setReviewOpen] = useState(false);
   return (
     <main className="app">
       <h1>react-webmcp fixture</h1>
@@ -429,11 +434,36 @@ export default function App() {
         Tools derived from this React tree. Open Chrome DevTools → Application →
         WebMCP (with the WebMCP flags enabled) to see them as an agent would.
       </p>
+      <div className="row">
+        <button
+          type="button"
+          data-testid="open-review"
+          onClick={() => setReviewOpen(true)}>
+          Review agent tools
+        </button>
+        <span className="muted">
+          {proposalsFile.proposals.length} proposals from{' '}
+          <code>yarn infer-tools extract</code>; accepted tools export as JSON
+          for <code>yarn infer-tools emit</code>.
+        </span>
+      </div>
       <div className="grid">
         <Todos todos={todos} setTodos={setTodos} />
         <Cart />
       </div>
       <ToolsPanel />
+      <ToolReview
+        proposals={proposalsFile.proposals}
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        storageKey="fixtures/webmcp"
+        onOpenSource={location => {
+          // A real integration would open the editor; the fixture just says
+          // where the binding lives.
+          // eslint-disable-next-line no-console
+          console.info('[react-webmcp] ' + location.file + ':' + location.line);
+        }}
+      />
     </main>
   );
 }

@@ -110,7 +110,7 @@ describe('react-webmcp static schema/handler check', () => {
       function T() { useWebMCPTool({name: 'a', description: 'd', inputSchema: {type: 'object', properties: {x: {}}}, execute: input => input.x}); }
     `;
     expect(checkToolAgainstSource(whole, {toolName: 'a'}).status).toBe(
-      'skipped'
+      'skipped',
     );
 
     const dynamicSchema = `
@@ -118,7 +118,7 @@ describe('react-webmcp static schema/handler check', () => {
       function T() { useWebMCPTool({name: 'a', description: 'd', inputSchema: schema, execute: ({x}) => x}); }
     `;
     expect(checkToolAgainstSource(dynamicSchema, {toolName: 'a'}).status).toBe(
-      'skipped'
+      'skipped',
     );
   });
 
@@ -137,7 +137,7 @@ describe('react-webmcp static schema/handler check', () => {
 
   it('reports tools that are not in the file', () => {
     expect(
-      checkToolAgainstSource('const x = 1;', {toolName: 'nope'}).status
+      checkToolAgainstSource('const x = 1;', {toolName: 'nope'}).status,
     ).toBe('not-found');
   });
 

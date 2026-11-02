@@ -891,6 +891,25 @@ const bundles = [
       }),
   },
 
+  /******* React WebMCP review overlay (developer tooling) *******/
+  {
+    bundleTypes: __EXPERIMENTAL__ ? [NODE_DEV, NODE_PROD] : [],
+    moduleType: RENDERER_UTILS,
+    entry: 'react-webmcp/unstable_review',
+    global: 'ReactWebMCPReview',
+    externals: ['react', 'react-webmcp'],
+    minifyWithProdErrorCodes: false,
+    wrapWithModuleBoundaries: false,
+    babel: opts =>
+      Object.assign({}, opts, {
+        // Include JSX
+        presets: opts.presets.concat([
+          require.resolve('@babel/preset-react'),
+          require.resolve('@babel/preset-flow'),
+        ]),
+      }),
+  },
+
   /******* React Native Fabric *******/
   {
     bundleTypes: __EXPERIMENTAL__

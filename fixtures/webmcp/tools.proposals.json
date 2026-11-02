@@ -1,0 +1,1002 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-02T00:55:14.423Z",
+  "source": {
+    "dir": "fixtures/webmcp/src",
+    "files": [
+      "App.js",
+      "modelContextShim.js"
+    ]
+  },
+  "proposals": [
+    {
+      "id": "App.js#TodoTools.add_todo",
+      "name": "add_todo",
+      "qualifiedName": "todos_add_todo",
+      "scopePath": [
+        "todos"
+      ],
+      "route": "/todo-tools",
+      "description": "Add a new item to the todo list.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text of the todo item."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "binding": {
+        "kind": "existing-hook",
+        "file": "App.js",
+        "line": 23,
+        "column": 3,
+        "component": "TodoTools",
+        "handler": null,
+        "params": [
+          "text"
+        ],
+        "paramStyle": "object"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:23",
+          "location": {
+            "file": "App.js",
+            "line": 23,
+            "column": 3
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner TodoTools mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "not replayed: mutate tool"
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#TodoTools.list_todos",
+      "name": "list_todos",
+      "qualifiedName": "todos_list_todos",
+      "scopePath": [
+        "todos"
+      ],
+      "route": "/todo-tools",
+      "description": "List the current todo items in order.",
+      "safety": "read",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "existing-hook",
+        "file": "App.js",
+        "line": 49,
+        "column": 3,
+        "component": "TodoTools",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:49",
+          "location": {
+            "file": "App.js",
+            "line": 49,
+            "column": 3
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner TodoTools mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "ok",
+          "summary": "executeTool returned 77 chars: \"{\"content\":[{\"type\":\"text\",\"text\":\"1. Try the WebMCP pane\\n2. Add an item\"}]}\""
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#TodoTools.clear_todos",
+      "name": "clear_todos",
+      "qualifiedName": "todos_clear_todos",
+      "scopePath": [
+        "todos"
+      ],
+      "route": "/todo-tools",
+      "description": "Delete every item from the todo list. This cannot be undone.",
+      "safety": "irreversible",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "existing-hook",
+        "file": "App.js",
+        "line": 59,
+        "column": 3,
+        "component": "TodoTools",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:59",
+          "location": {
+            "file": "App.js",
+            "line": 59,
+            "column": 3
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner TodoTools mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "not replayed: irreversible tool"
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#DuplicateTodoTool.add_todo",
+      "name": "add_todo",
+      "qualifiedName": "todos_add_todo",
+      "scopePath": [
+        "todos"
+      ],
+      "route": "/duplicate-todo-tool",
+      "description": "A second tool with the same name, on purpose.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "existing-hook",
+        "file": "App.js",
+        "line": 76,
+        "column": 3,
+        "component": "DuplicateTodoTool",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "warn",
+          "summary": "collides with todos_add_todo in TodoTools (same file)",
+          "location": {
+            "file": "App.js",
+            "line": 76,
+            "column": 3
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "warn",
+          "summary": "owner DuplicateTodoTool not mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "not replayed: mutate tool"
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#SearchTools.search_todos",
+      "name": "search_todos",
+      "qualifiedName": "todos_search_search_todos",
+      "scopePath": [
+        "todos",
+        "search"
+      ],
+      "route": "/search-tools",
+      "description": "Find todo items whose text contains a phrase.",
+      "safety": "read",
+      "lifetime": "view",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Text to look for."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "binding": {
+        "kind": "existing-hook",
+        "file": "App.js",
+        "line": 87,
+        "column": 3,
+        "component": "SearchTools",
+        "handler": null,
+        "params": [
+          "query"
+        ],
+        "paramStyle": "object"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:87",
+          "location": {
+            "file": "App.js",
+            "line": 87,
+            "column": 3
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner SearchTools mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "not replayed: requires input"
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#Todos.addTodo",
+      "name": "add_todo",
+      "qualifiedName": "add_todo",
+      "scopePath": [],
+      "route": "/todos",
+      "description": "Add a todo (text) in Todos.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": ""
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 115,
+        "column": 19,
+        "component": "Todos",
+        "handler": "addTodo",
+        "params": [
+          "text"
+        ],
+        "paramStyle": "positional"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding addTodo exists",
+          "location": {
+            "file": "App.js",
+            "line": 115,
+            "column": 19
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Todos mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#Todos.clearTodos",
+      "name": "clear_todos",
+      "qualifiedName": "clear_todos",
+      "scopePath": [],
+      "route": "/todos",
+      "description": "Clear the todos in Todos. This cannot be undone.",
+      "safety": "irreversible",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 116,
+        "column": 22,
+        "component": "Todos",
+        "handler": "clearTodos",
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding clearTodos exists",
+          "location": {
+            "file": "App.js",
+            "line": 116,
+            "column": 22
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Todos mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#Todos.L132",
+      "name": "submit_todos",
+      "qualifiedName": "submit_todos",
+      "scopePath": [],
+      "route": "/todos",
+      "description": "Submit the todos form in Todos.",
+      "safety": "irreversible",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "form",
+        "file": "App.js",
+        "line": 132,
+        "column": 7,
+        "component": "Todos",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding form onSubmit exists",
+          "location": {
+            "file": "App.js",
+            "line": 132,
+            "column": 7
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from the form inputs"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Todos mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#Inventory.add_item",
+      "name": "add_item",
+      "qualifiedName": "cart_add_item",
+      "scopePath": [
+        "cart"
+      ],
+      "route": "/inventory",
+      "description": "Add an inventory item to the cart by SKU.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "SKU of the item to add, e.g. TEA-001."
+          },
+          "quantity": {
+            "type": "number",
+            "description": "How many to add (default 1)."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "binding": {
+        "kind": "existing-tool-element",
+        "file": "App.js",
+        "line": 257,
+        "column": 11,
+        "component": "Inventory",
+        "handler": null,
+        "params": [
+          "sku",
+          "quantity"
+        ],
+        "paramStyle": "object"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:257",
+          "location": {
+            "file": "App.js",
+            "line": 257,
+            "column": 11
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Inventory mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "not replayed: mutate tool"
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#Inventory.list_items",
+      "name": "list_items",
+      "qualifiedName": "cart_list_items",
+      "scopePath": [
+        "cart"
+      ],
+      "route": "/inventory",
+      "description": "List the items in the cart with quantities and the total price.",
+      "safety": "read",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "existing-tool-element",
+        "file": "App.js",
+        "line": 290,
+        "column": 11,
+        "component": "Inventory",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:290",
+          "location": {
+            "file": "App.js",
+            "line": 290,
+            "column": 11
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Inventory mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "ok",
+          "summary": "executeTool returned 57 chars: \"{\"content\":[{\"type\":\"text\",\"text\":\"The cart is empty.\"}]}\""
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#Inventory.clear",
+      "name": "clear",
+      "qualifiedName": "cart_clear",
+      "scopePath": [
+        "cart"
+      ],
+      "route": "/inventory",
+      "description": "Remove every item from the cart. This cannot be undone.",
+      "safety": "irreversible",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "existing-tool-element",
+        "file": "App.js",
+        "line": 304,
+        "column": 11,
+        "component": "Inventory",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "already implemented at App.js:304",
+          "location": {
+            "file": "App.js",
+            "line": 304,
+            "column": 11
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema matches handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Inventory mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "not replayed: irreversible tool"
+        }
+      ],
+      "status": "exported",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": null
+    },
+    {
+      "id": "App.js#Cart.addItem",
+      "name": "add_item",
+      "qualifiedName": "add_item",
+      "scopePath": [],
+      "route": "/cart",
+      "description": "Add an item (sku, quantity) in Cart.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": ""
+          },
+          "quantity": {
+            "type": "number",
+            "description": ""
+          }
+        },
+        "required": [
+          "sku",
+          "quantity"
+        ]
+      },
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 331,
+        "column": 19,
+        "component": "Cart",
+        "handler": "addItem",
+        "params": [
+          "sku",
+          "quantity"
+        ],
+        "paramStyle": "positional"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding addItem exists",
+          "location": {
+            "file": "App.js",
+            "line": 331,
+            "column": 19
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Cart mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#Cart.clearCart",
+      "name": "clear_cart",
+      "qualifiedName": "clear_cart",
+      "scopePath": [],
+      "route": "/cart",
+      "description": "Clear the cart in Cart. This cannot be undone.",
+      "safety": "irreversible",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 333,
+        "column": 21,
+        "component": "Cart",
+        "handler": "clearCart",
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding clearCart exists",
+          "location": {
+            "file": "App.js",
+            "line": 333,
+            "column": 21
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Cart mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#Cart.L346",
+      "name": "reload_inventory",
+      "qualifiedName": "reload_inventory",
+      "scopePath": [],
+      "route": "/cart",
+      "description": "Reload the inventory in Cart.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 346,
+        "column": 20,
+        "component": "Cart",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding inline handler exists",
+          "location": {
+            "file": "App.js",
+            "line": 346,
+            "column": 20
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Cart mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#Cart.L352",
+      "name": "toggle_suspend_cart",
+      "qualifiedName": "toggle_suspend_cart",
+      "scopePath": [],
+      "route": "/cart",
+      "description": "Toggle the suspend cart in Cart.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 352,
+        "column": 20,
+        "component": "Cart",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding inline handler exists",
+          "location": {
+            "file": "App.js",
+            "line": 352,
+            "column": 20
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner Cart mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    },
+    {
+      "id": "App.js#App.L441",
+      "name": "review_agent_tools",
+      "qualifiedName": "review_agent_tools",
+      "scopePath": [],
+      "route": "/app",
+      "description": "Review the agent tools in App.",
+      "safety": "mutate",
+      "lifetime": "view",
+      "inputSchema": null,
+      "binding": {
+        "kind": "handler",
+        "file": "App.js",
+        "line": 441,
+        "column": 20,
+        "component": "App",
+        "handler": null,
+        "params": [],
+        "paramStyle": "none"
+      },
+      "evidence": [
+        {
+          "check": "binding",
+          "level": "ok",
+          "summary": "binding inline handler exists",
+          "location": {
+            "file": "App.js",
+            "line": 441,
+            "column": 20
+          }
+        },
+        {
+          "check": "schema",
+          "level": "ok",
+          "summary": "schema derived from handler parameters"
+        },
+        {
+          "check": "trace",
+          "level": "pending",
+          "summary": "no journey recorded"
+        },
+        {
+          "check": "mounted",
+          "level": "ok",
+          "summary": "owner App mounted on /"
+        },
+        {
+          "check": "replay",
+          "level": "pending",
+          "summary": "replay runs once the tool exists"
+        }
+      ],
+      "status": "proposed",
+      "inferredAt": "2026-11-02T00:55:14.423Z",
+      "provider": "fixture"
+    }
+  ]
+}

@@ -17,6 +17,9 @@ const esNextPaths = [
   'packages/*/src/**/*.js',
   'packages/dom-event-testing-library/**/*.js',
   'packages/shared/**/*.js',
+  // react-webmcp developer tooling, run through @babel/register
+  'packages/react-webmcp/validate/**/*.js',
+  'packages/react-webmcp/infer/**/*.js',
   // Shims and Flow environment
   'scripts/flow/*.js',
   'scripts/rollup/shims/**/*.js',

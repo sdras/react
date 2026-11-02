@@ -58,7 +58,7 @@ type CommandOptions = {
   logFile: string,
   timeout?: number,
 };
-type Chrome = {
+export type Chrome = {
   pageId: number,
   run: (args: Array<string>) => Promise<CommandResult>,
   json: (args: Array<string>) => Promise<mixed>,
@@ -121,7 +121,7 @@ type Options = {
 
 const PACKAGE_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PACKAGE_DIR, '..', '..');
-const DEFAULT_FIXTURE_DIR = path.join(REPO_ROOT, 'fixtures', 'webmcp');
+const DEFAULT_FIXTURE_DIR: string = path.join(REPO_ROOT, 'fixtures', 'webmcp');
 const BUILT_MODULES_DIR = path.join(REPO_ROOT, 'build', 'oss-experimental');
 const LOG_DIR =
   process.env.VALIDATE_LOG_DIR ||
@@ -223,7 +223,7 @@ function ensureSupportedNode(): void {
     throw createError(
       `Node ${process.version} cannot run chrome-devtools-mcp. Use Node ` +
         '20.19, 22.12 or newer (for example the version in .nvmrc) to run the ' +
-        'react-webmcp contract check.'
+        'react-webmcp contract check.',
     );
   }
 }
@@ -233,7 +233,7 @@ function ensureBuiltModules(): void {
     throw createError(
       'Missing build/oss-experimental/react-webmcp. Run ' +
         '`yarn build-for-devtools` from the repo root before running the ' +
-        'react-webmcp contract check.'
+        'react-webmcp contract check.',
     );
   }
 }
@@ -242,7 +242,7 @@ function ensureFixtureDependencies(fixtureDir: string): void {
   if (!fs.existsSync(path.join(fixtureDir, 'node_modules'))) {
     throw createError(
       `The fixture at ${fixtureDir} has no node_modules. Run ` +
-        '`yarn install` inside it first.'
+        '`yarn install` inside it first.',
     );
   }
 }
@@ -274,7 +274,7 @@ function formatCommand(command: string, args: Array<string>): string {
 function spawnLogged(
   command: string,
   args: Array<string>,
-  options: SpawnOptions
+  options: SpawnOptions,
 ): ChildProcess {
   const child = childProcess.spawn(command, args, {
     cwd: options.cwd,
@@ -286,7 +286,7 @@ function spawnLogged(
   child.on('error', error => {
     appendLog(
       options.logFile,
-      `Failed to spawn ${command}: ${error.stack || error.message}\n`
+      `Failed to spawn ${command}: ${error.stack || error.message}\n`,
     );
   });
   child.stdout.on('data', chunk => appendLog(options.logFile, chunk));
@@ -323,7 +323,7 @@ function waitForExit(child: ChildProcess, timeout: number): Promise<void> {
 function runCommand(
   command: string,
   args: Array<string>,
-  options: CommandOptions
+  options: CommandOptions,
 ): Promise<CommandResult> {
   const timeout = options.timeout || 120000;
   const logFile = options.logFile;
@@ -361,8 +361,8 @@ function runCommand(
           createError(
             `Command failed with exit code ${
               code == null ? 'null' : code
-            }: ${command} ${args.join(' ')}\n${stderr || stdout}`
-          )
+            }: ${command} ${args.join(' ')}\n${stderr || stdout}`,
+          ),
         );
       }
     });
@@ -372,10 +372,10 @@ function runCommand(
 function startDebuggableChrome(
   chromeExecutablePath: string,
   remoteDebuggingPort: number,
-  logFile: string
+  logFile: string,
 ): {profileDir: string, process: ChildProcess} {
   const profileDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), 'react-webmcp-validate-chrome-')
+    path.join(os.tmpdir(), 'react-webmcp-validate-chrome-'),
   );
   appendLog(logFile, `chromeUserDataDir=${profileDir}\n`);
   const args = [
@@ -409,7 +409,7 @@ function getChromeDevToolsBin(): string {
   } catch (error) {
     throw createError(
       'Missing chrome-devtools-mcp dependency. Run `yarn install` from the ' +
-        'repo root before running the react-webmcp contract check.'
+        'repo root before running the react-webmcp contract check.',
     );
   }
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
@@ -419,7 +419,7 @@ function getChromeDevToolsBin(): string {
       : null;
   if (typeof bin !== 'string') {
     throw createError(
-      'chrome-devtools-mcp package.json is missing the chrome-devtools bin'
+      'chrome-devtools-mcp package.json is missing the chrome-devtools bin',
     );
   }
   return path.resolve(path.dirname(packageJsonPath), bin);
@@ -535,7 +535,7 @@ async function resolvePageId(chrome: Chrome): Promise<number> {
   const pageId = parsePageId(pages);
   if (pageId == null) {
     throw createError(
-      `Expected list_pages to include a page id. Saw: ${formatValue(pages)}`
+      `Expected list_pages to include a page id. Saw: ${formatValue(pages)}`,
     );
   }
   return pageId;
@@ -554,7 +554,7 @@ async function evaluate(chrome: Chrome, fn: string): Promise<mixed> {
 async function callTool(
   chrome: Chrome,
   toolName: string,
-  params?: {...}
+  params?: {...},
 ): Promise<mixed> {
   const output = await chrome.json([
     'execute_3p_developer_tool',
@@ -568,7 +568,7 @@ async function callTool(
 
 async function waitForPageReady(
   chrome: Chrome,
-  timeout: number
+  timeout: number,
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   let lastResult: mixed = null;
@@ -579,7 +579,7 @@ async function waitForPageReady(
         hasApp: document.querySelector('main.app') !== null,
         hasHook: window.__REACT_DEVTOOLS_GLOBAL_HOOK__ != null,
         hasRegistry: window.__REACT_WEBMCP__ != null,
-      })`
+      })`,
     );
     lastResult = result;
     if (
@@ -594,7 +594,7 @@ async function waitForPageReady(
     await sleep(250);
   }
   throw createError(
-    `Timed out waiting for the fixture to be ready: ${formatValue(lastResult)}`
+    `Timed out waiting for the fixture to be ready: ${formatValue(lastResult)}`,
   );
 }
 
@@ -605,7 +605,7 @@ async function waitForPageReady(
 // changing before any check reads the page.
 async function waitForPageToSettle(
   chrome: Chrome,
-  timeout: number
+  timeout: number,
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   let suspended: Array<string> = [];
@@ -625,7 +625,7 @@ async function waitForPageToSettle(
         .getTools()
         .map(tool => tool.qualifiedName + ':' + tool.status)
         .sort()
-        .join(',')`
+        .join(',')`,
     );
     if (snapshot !== lastSnapshot) {
       lastSnapshot = snapshot;
@@ -641,8 +641,8 @@ async function waitForPageToSettle(
   }
   throw createError(
     `Timed out waiting for the page to settle. Suspended boundaries: [${suspended.join(
-      ', '
-    )}]; last registry snapshot: ${formatValue(lastSnapshot)}`
+      ', ',
+    )}]; last registry snapshot: ${formatValue(lastSnapshot)}`,
   );
 }
 
@@ -660,17 +660,17 @@ async function readRegisteredNames(chrome: Chrome): Promise<Array<string>> {
         return tools.map(tool => tool.name).sort();
       }
       return null;
-    }`
+    }`,
   );
   if (!Array.isArray(result)) {
     throw createError(
       `Could not read the registered tool names from the page. Saw: ${formatValue(
-        result
-      )}`
+        result,
+      )}`,
     );
   }
   return result.map(name =>
-    typeof name === 'string' ? name : JSON.stringify(name) || ''
+    typeof name === 'string' ? name : JSON.stringify(name) || '',
   );
 }
 
@@ -678,7 +678,7 @@ async function collect(chrome: Chrome): Promise<Collected> {
   const agentTools: any = await callTool(chrome, 'react_get_agent_tools');
   if (agentTools == null || typeof agentTools !== 'object') {
     throw createError(
-      `Unexpected react_get_agent_tools result: ${formatValue(agentTools)}`
+      `Unexpected react_get_agent_tools result: ${formatValue(agentTools)}`,
     );
   }
   if (typeof agentTools.error === 'string') {
@@ -701,7 +701,7 @@ function finding(
   level: 'error' | 'warn' | 'info',
   check: string,
   tool: string | null,
-  message: string
+  message: string,
 ): Finding {
   return {level, check, tool, message};
 }
@@ -714,7 +714,7 @@ function checkRegistry(collected: Collected): Array<Finding> {
         'registry',
         null,
         'The page does not expose the react-webmcp registry. Is this a ' +
-          'development build that uses react-webmcp?'
+          'development build that uses react-webmcp?',
       ),
     ];
   }
@@ -728,7 +728,7 @@ function checkRegistry(collected: Collected): Array<Finding> {
 
 async function checkBindings(
   chrome: Chrome,
-  collected: Collected
+  collected: Collected,
 ): Promise<Array<Finding>> {
   const findings = [];
   for (let i = 0; i < collected.tools.length; i++) {
@@ -741,8 +741,8 @@ async function checkBindings(
           tool.qualifiedName,
           `No owning component could be resolved${
             tool.unresolvedReason != null ? ': ' + tool.unresolvedReason : '.'
-          }`
-        )
+          }`,
+        ),
       );
       continue;
     }
@@ -753,8 +753,8 @@ async function checkBindings(
           'error',
           'binding',
           tool.qualifiedName,
-          `The owner ${owner.name} (${owner.uid}) has no source location.`
-        )
+          `The owner ${owner.name} (${owner.uid}) has no source location.`,
+        ),
       );
       continue;
     }
@@ -767,8 +767,8 @@ async function checkBindings(
           'error',
           'binding',
           tool.qualifiedName,
-          `react_get_component_source could not resolve owner uid ${owner.uid}.`
-        )
+          `react_get_component_source could not resolve owner uid ${owner.uid}.`,
+        ),
       );
     }
   }
@@ -792,8 +792,8 @@ function checkRegistrationCrossCheck(collected: Collected): Array<Finding> {
       'registration',
       null,
       `Registered tools differ from the registry. Missing from the browser: [${missing.join(
-        ', '
-      )}]. In the browser but not registered by React: [${extra.join(', ')}].`
+        ', ',
+      )}]. In the browser but not registered by React: [${extra.join(', ')}].`,
     ),
   ];
 }
@@ -810,8 +810,8 @@ function checkBudgets(collected: Collected): Array<Finding> {
           'warn',
           'budget',
           tool.qualifiedName,
-          `The name is ${tool.qualifiedName.length} characters; agents may truncate names over ${MAX_NAME_LENGTH}.`
-        )
+          `The name is ${tool.qualifiedName.length} characters; agents may truncate names over ${MAX_NAME_LENGTH}.`,
+        ),
       );
     }
     if (tool.description.length > MAX_DESCRIPTION_LENGTH) {
@@ -820,8 +820,8 @@ function checkBudgets(collected: Collected): Array<Finding> {
           'warn',
           'budget',
           tool.qualifiedName,
-          `The description is ${tool.description.length} characters; keep it under ${MAX_DESCRIPTION_LENGTH}.`
-        )
+          `The description is ${tool.description.length} characters; keep it under ${MAX_DESCRIPTION_LENGTH}.`,
+        ),
       );
     }
     const schema: any = tool.inputSchema;
@@ -839,8 +839,8 @@ function checkBudgets(collected: Collected): Array<Finding> {
               'warn',
               'budget',
               tool.qualifiedName,
-              `The description of parameter "${keys[j]}" is over ${MAX_PARAM_DESCRIPTION_LENGTH} characters.`
-            )
+              `The description of parameter "${keys[j]}" is over ${MAX_PARAM_DESCRIPTION_LENGTH} characters.`,
+            ),
           );
         }
       }
@@ -851,8 +851,8 @@ function checkBudgets(collected: Collected): Array<Finding> {
           'warn',
           'safety',
           tool.qualifiedName,
-          'No safety classification. Agents assume mutation; mark read-only tools "read" and destructive ones "irreversible".'
-        )
+          'No safety classification. Agents assume mutation; mark read-only tools "read" and destructive ones "irreversible".',
+        ),
       );
     } else if (tool.safety === 'read') {
       for (let j = 0; j < MUTATING_PREFIXES.length; j++) {
@@ -862,8 +862,8 @@ function checkBudgets(collected: Collected): Array<Finding> {
               'warn',
               'safety',
               tool.qualifiedName,
-              `Marked "read" but named like a mutation ("${tool.name}").`
-            )
+              `Marked "read" but named like a mutation ("${tool.name}").`,
+            ),
           );
           break;
         }
@@ -877,8 +877,8 @@ function checkBudgets(collected: Collected): Array<Finding> {
           'error',
           'budget',
           name,
-          `${count} tools share this agent-facing name.`
-        )
+          `${count} tools share this agent-facing name.`,
+        ),
       );
     }
   });
@@ -888,7 +888,7 @@ function checkBudgets(collected: Collected): Array<Finding> {
 // Maps a source file name reported by the page back to a file in the fixture.
 function resolveSourceFile(
   fileName: string,
-  fixtureDir: string
+  fixtureDir: string,
 ): string | null {
   let relative: string | null = null;
   if (fileName.indexOf('webpack-internal:///') === 0) {
@@ -926,8 +926,8 @@ function checkStatic(collected: Collected, fixtureDir: string): Array<Finding> {
           'info',
           'static',
           tool.qualifiedName,
-          `Skipped: the source file name "${ownerSource.fileName}" could not be mapped to a file in the fixture.`
-        )
+          `Skipped: the source file name "${ownerSource.fileName}" could not be mapped to a file in the fixture.`,
+        ),
       );
       continue;
     }
@@ -951,20 +951,20 @@ function checkStatic(collected: Collected, fixtureDir: string): Array<Finding> {
       if (result.usedButUndeclared.length > 0) {
         parts.push(
           `execute reads [${result.usedButUndeclared.join(
-            ', '
-          )}] but inputSchema does not declare them`
+            ', ',
+          )}] but inputSchema does not declare them`,
         );
       }
       if (result.requiredButUnused.length > 0) {
         parts.push(
           `inputSchema requires [${result.requiredButUnused.join(
-            ', '
-          )}] but execute never reads them`
+            ', ',
+          )}] but execute never reads them`,
         );
       }
       if (result.declaredButUnused.length > 0) {
         parts.push(
-          `declared but unused: [${result.declaredButUnused.join(', ')}]`
+          `declared but unused: [${result.declaredButUnused.join(', ')}]`,
         );
       }
       findings.push(
@@ -972,8 +972,8 @@ function checkStatic(collected: Collected, fixtureDir: string): Array<Finding> {
           'error',
           'static',
           tool.qualifiedName,
-          `${where}: ${parts.join('; ')}.`
-        )
+          `${where}: ${parts.join('; ')}.`,
+        ),
       );
     } else if (result.status === 'skipped') {
       findings.push(
@@ -981,8 +981,8 @@ function checkStatic(collected: Collected, fixtureDir: string): Array<Finding> {
           'info',
           'static',
           tool.qualifiedName,
-          `${where}: skipped (${result.reason})`
-        )
+          `${where}: skipped (${result.reason})`,
+        ),
       );
     } else {
       findings.push(
@@ -990,8 +990,8 @@ function checkStatic(collected: Collected, fixtureDir: string): Array<Finding> {
           'warn',
           'static',
           tool.qualifiedName,
-          `${path.relative(REPO_ROOT, file)}: ${result.reason}`
-        )
+          `${path.relative(REPO_ROOT, file)}: ${result.reason}`,
+        ),
       );
     }
   }
@@ -1015,15 +1015,15 @@ async function findButtonUid(chrome: Chrome, name: string): Promise<string> {
   const snapshot = response != null ? response.snapshot : null;
   if (snapshot == null) {
     throw createError(
-      `take_snapshot returned no snapshot: ${formatValue(response)}`
+      `take_snapshot returned no snapshot: ${formatValue(response)}`,
     );
   }
   const node = flattenSnapshot(snapshot, []).find(
-    candidate => candidate.role === 'button' && candidate.name === name
+    candidate => candidate.role === 'button' && candidate.name === name,
   );
   if (node == null || typeof node.id !== 'string') {
     throw createError(
-      `Could not find a "${name}" button in the page snapshot.`
+      `Could not find a "${name}" button in the page snapshot.`,
     );
   }
   return node.id;
@@ -1032,7 +1032,7 @@ async function findButtonUid(chrome: Chrome, name: string): Promise<string> {
 async function pollUntil(
   chrome: Chrome,
   predicate: (collected: Collected) => boolean,
-  timeout: number
+  timeout: number,
 ): Promise<Collected> {
   const deadline = Date.now() + timeout;
   let last = await collect(chrome);
@@ -1045,10 +1045,10 @@ async function pollUntil(
 
 async function checkSuspense(
   chrome: Chrome,
-  collected: Collected
+  collected: Collected,
 ): Promise<Array<Finding>> {
   const cartTools = collected.tools.filter(
-    tool => tool.source === 'tree' && tool.scopePath.indexOf('cart') !== -1
+    tool => tool.source === 'tree' && tool.scopePath.indexOf('cart') !== -1,
   );
   if (cartTools.length === 0) {
     return [
@@ -1056,7 +1056,7 @@ async function checkSuspense(
         'info',
         'suspense',
         null,
-        'Skipped: no tree-path tools in the "cart" scope to exercise.'
+        'Skipped: no tree-path tools in the "cart" scope to exercise.',
       ),
     ];
   }
@@ -1069,7 +1069,7 @@ async function checkSuspense(
   const allUnavailable = (state: Collected) =>
     names.every(name => {
       const tool = state.tools.find(
-        candidate => candidate.qualifiedName === name
+        candidate => candidate.qualifiedName === name,
       );
       return (
         (tool == null || tool.status === 'unavailable') &&
@@ -1079,7 +1079,7 @@ async function checkSuspense(
   const allRegistered = (state: Collected) =>
     names.every(name => {
       const tool = state.tools.find(
-        candidate => candidate.qualifiedName === name
+        candidate => candidate.qualifiedName === name,
       );
       return (
         tool != null &&
@@ -1099,14 +1099,14 @@ async function checkSuspense(
         'suspense',
         null,
         `After suspending the cart, expected [${names.join(
-          ', '
+          ', ',
         )}] to be unregistered and gone from the registry (or marked ` +
           `unavailable). Saw statuses ${formatValue(
             suspended.tools
               .filter(tool => names.indexOf(tool.qualifiedName) !== -1)
-              .map(tool => [tool.qualifiedName, tool.status])
-          )} and registered names ${formatValue(suspended.registeredNames)}.`
-      )
+              .map(tool => [tool.qualifiedName, tool.status]),
+          )} and registered names ${formatValue(suspended.registeredNames)}.`,
+      ),
     );
   }
   const resumeUid = await findButtonUid(chrome, 'Resume cart');
@@ -1119,11 +1119,11 @@ async function checkSuspense(
         'suspense',
         null,
         `After resuming the cart, expected [${names.join(
-          ', '
+          ', ',
         )}] to be registered again. Saw registered names ${formatValue(
-          resumed.registeredNames
-        )}.`
-      )
+          resumed.registeredNames,
+        )}.`,
+      ),
     );
   }
   return findings;
@@ -1148,7 +1148,7 @@ function projectForManifest(tools: Array<AgentTool>): Array<ManifestEntry> {
         ? -1
         : a.qualifiedName > b.qualifiedName
           ? 1
-          : 0
+          : 0,
     );
 }
 
@@ -1193,8 +1193,8 @@ function checkDrift(collected: Collected, options: Options): Array<Finding> {
         null,
         `${exists ? 'Updated' : 'Created'} ${path.relative(
           REPO_ROOT,
-          options.manifestPath
-        )} with ${projection.length} tools.`
+          options.manifestPath,
+        )} with ${projection.length} tools.`,
       ),
     ];
   }
@@ -1209,11 +1209,11 @@ function checkDrift(collected: Collected, options: Options): Array<Finding> {
       null,
       `The tool surface differs from ${path.relative(
         REPO_ROOT,
-        options.manifestPath
+        options.manifestPath,
       )}. Review the change and run \`yarn validate-tools --update\` to accept it.\n${simpleDiff(
         existing,
-        serialized
-      )}`
+        serialized,
+      )}`,
     ),
   ];
 }
@@ -1232,7 +1232,7 @@ function report(findings: Array<Finding>): number {
       log(
         `  [${item.check}]${item.tool != null ? ' ' + item.tool : ''}: ${
           item.message
-        }`
+        }`,
       );
     }
   };
@@ -1249,14 +1249,14 @@ function report(findings: Array<Finding>): number {
 
 async function runChecks(
   chrome: Chrome,
-  options: Options
+  options: Options,
 ): Promise<Array<Finding>> {
   log('Reading the agent tools React owns...');
   const collected = await collect(chrome);
   log(
     `Found ${collected.tools.length} tool(s): ${collected.tools
       .map(tool => `${tool.qualifiedName} (${tool.status})`)
-      .join(', ')}`
+      .join(', ')}`,
   );
   let findings = checkRegistry(collected);
   if (findings.length > 0) {
@@ -1288,16 +1288,27 @@ function printHelp(): void {
       '  --url <url>         Check an already running fixture instead of starting one',
       '  --skip-static       Skip the schema/handler source check',
       '  --skip-suspense     Skip the Suspense availability check',
-    ].join('\n')
+    ].join('\n'),
   );
 }
 
-async function main(argv: Array<string>): Promise<number> {
-  const options = parseArgs(argv);
-  if (options.help) {
-    printHelp();
-    return 0;
-  }
+export type Session = {
+  chrome: Chrome,
+  appUrl: string,
+  close: () => Promise<void>,
+};
+
+type SessionOptions = {
+  // A running app to drive instead of starting the fixture.
+  url: string | null,
+  fixtureDir: string,
+};
+
+// Starts the fixture (unless `url` points at a running app) and a headless
+// chrome-devtools-mcp daemon, opens the page, waits for it to settle, and
+// checks that React's tools are discoverable there. `close()` tears it all
+// down. Shared by the contract check and by `infer trace`.
+async function openSession(options: SessionOptions): Promise<Session> {
   ensureSupportedNode();
   if (options.url == null) {
     ensureBuiltModules();
@@ -1321,7 +1332,7 @@ async function main(argv: Array<string>): Promise<number> {
     runCommand(
       process.execPath,
       [chromeDevToolsBin, ...args, '--sessionId', SESSION_ID],
-      {cwd: PACKAGE_DIR, env: process.env, logFile: cliLog, timeout: 120000}
+      {cwd: PACKAGE_DIR, env: process.env, logFile: cliLog, timeout: 120000},
     );
   const chrome: Chrome = {
     pageId: 1,
@@ -1330,6 +1341,46 @@ async function main(argv: Array<string>): Promise<number> {
       const result = await runChrome([...args, '--output-format', 'json']);
       return parseJsonOutput(result.stdout);
     },
+  };
+
+  const close = async (): Promise<void> => {
+    try {
+      await chrome.run(['stop']);
+    } catch (error) {
+      appendLog(cliLog, `Failed to stop chrome-devtools: ${error.stack}\n`);
+    }
+    if (debuggableChrome) {
+      try {
+        debuggableChrome.kill('SIGTERM');
+        await waitForExit(debuggableChrome, 5000);
+      } catch (error) {
+        appendLog(chromeLog, `Failed to stop Chrome: ${error.stack}\n`);
+      }
+    }
+    if (debuggableChromeProfile) {
+      try {
+        fs.rmSync(debuggableChromeProfile, {force: true, recursive: true});
+      } catch (error) {
+        appendLog(
+          chromeLog,
+          `Failed to remove the Chrome profile: ${error.stack}\n`,
+        );
+      }
+    }
+    if (fixture && fixture.pid) {
+      try {
+        process.kill(-fixture.pid, 'SIGTERM');
+      } catch (error) {
+        try {
+          fixture.kill('SIGTERM');
+        } catch (innerError) {
+          appendLog(
+            fixtureLog,
+            `Failed to stop the fixture: ${innerError.stack}\n`,
+          );
+        }
+      }
+    }
   };
 
   try {
@@ -1365,7 +1416,7 @@ async function main(argv: Array<string>): Promise<number> {
       const launched = startDebuggableChrome(
         chromeExecutablePath,
         remoteDebuggingPort,
-        chromeLog
+        chromeLog,
       );
       debuggableChrome = launched.process;
       debuggableChromeProfile = launched.profileDir;
@@ -1401,62 +1452,57 @@ async function main(argv: Array<string>): Promise<number> {
         ? [groups]
         : [];
     const reactGroup = groupList.find(
-      group => group != null && group.name === 'react'
+      group => group != null && group.name === 'react',
     );
     if (
       reactGroup == null ||
       !Array.isArray(reactGroup.tools) ||
       !reactGroup.tools.some(
-        tool => tool != null && tool.name === 'react_get_agent_tools'
+        tool => tool != null && tool.name === 'react_get_agent_tools',
       )
     ) {
       throw createError(
         'react_get_agent_tools is not discoverable on this page. Is ' +
-          'react-devtools-cdt-mcp/register imported before React?'
+          'react-devtools-cdt-mcp/register imported before React?',
       );
     }
-
-    const findings = await runChecks(chrome, options);
-    return report(findings);
-  } finally {
-    try {
-      await chrome.run(['stop']);
-    } catch (error) {
-      appendLog(cliLog, `Failed to stop chrome-devtools: ${error.stack}\n`);
-    }
-    if (debuggableChrome) {
-      try {
-        debuggableChrome.kill('SIGTERM');
-        await waitForExit(debuggableChrome, 5000);
-      } catch (error) {
-        appendLog(chromeLog, `Failed to stop Chrome: ${error.stack}\n`);
-      }
-    }
-    if (debuggableChromeProfile) {
-      try {
-        fs.rmSync(debuggableChromeProfile, {force: true, recursive: true});
-      } catch (error) {
-        appendLog(
-          chromeLog,
-          `Failed to remove the Chrome profile: ${error.stack}\n`
-        );
-      }
-    }
-    if (fixture && fixture.pid) {
-      try {
-        process.kill(-fixture.pid, 'SIGTERM');
-      } catch (error) {
-        try {
-          fixture.kill('SIGTERM');
-        } catch (innerError) {
-          appendLog(
-            fixtureLog,
-            `Failed to stop the fixture: ${innerError.stack}\n`
-          );
-        }
-      }
-    }
+    return {chrome, appUrl, close};
+  } catch (error) {
+    await close();
+    throw error;
   }
 }
 
-module.exports = {main, parseArgs, projectForManifest, resolveSourceFile};
+async function main(argv: Array<string>): Promise<number> {
+  const options = parseArgs(argv);
+  if (options.help) {
+    printHelp();
+    return 0;
+  }
+  const session = await openSession({
+    url: options.url,
+    fixtureDir: options.fixtureDir,
+  });
+  try {
+    const findings = await runChecks(session.chrome, options);
+    return report(findings);
+  } finally {
+    await session.close();
+  }
+}
+
+module.exports = {
+  DEFAULT_FIXTURE_DIR,
+  callTool,
+  collect,
+  createError,
+  evaluate,
+  formatValue,
+  log,
+  main,
+  openSession,
+  parseArgs,
+  projectForManifest,
+  readRegisteredNames,
+  resolveSourceFile,
+};

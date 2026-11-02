@@ -121,6 +121,61 @@ children are not allowed inside `<ToolTree>`.
   `required` schema properties that are not declared, missing `execute`,
   oversized names and descriptions, and tools without a `safety` classification.
 
+## Proposing and reviewing tools
+
+Most of an app's agent tools can be inferred from code it already has: the
+handlers that mutate state and the forms that collect input. The inference
+assistant in [`infer/`](./infer) proposes them, and the review overlay lets a
+developer decide; nothing is registered or written to source without a human
+accepting it.
+
+1. `yarn infer-tools extract --src <app source dir>` parses the components
+   and writes `tools.proposals.json` next to the source: one proposal per
+   handler or form, with a name, a safety classification, an input schema
+   derived from the parameters, the code binding (file, line, component,
+   handler) and the grounding evidence a reviewer needs. Existing
+   `useWebMCPTool` calls and `<Tool>` elements appear as already exported.
+2. `yarn infer-tools synthesize --in tools.proposals.json` rewrites the
+   placeholder descriptions. The `fixture` provider is deterministic; set
+   `REACT_WEBMCP_LLM` or `--provider` to pick another once one exists.
+3. Render `<ToolReview>` from `react-webmcp/unstable_review` in development
+   and pass it the file's `proposals`. It also lists the tools registered in
+   the page right now, so the whole agent-facing surface is in one place.
+4. "Export accepted" hands a `ReviewExport` (the accepted proposals with the
+   reviewer's edits, plus the rejected ids) to `onExport`, or downloads it as
+   `tools.accepted.json`. `yarn infer-tools emit --accepted tools.accepted.json
+   --write` then inserts marked `useWebMCPTool` skeletons into the owning
+   components for the developer to finish.
+
+```js
+import {ToolReview} from 'react-webmcp/unstable_review';
+import proposalsFile from './tools.proposals.json';
+
+function DevTools() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Review agent tools</button>
+      <ToolReview
+        proposals={proposalsFile.proposals}
+        open={open}
+        onClose={() => setOpen(false)}
+        storageKey="my-app"
+      />
+    </>
+  );
+}
+```
+
+The overlay groups tools by route (or scope, or file), filters by status and
+text, shows each proposal's evidence (binding, schema, replay and trace
+checks), and lets the reviewer edit the name, description, safety, lifetime and
+input schema before accepting. Keyboard: `/` searches, `A` accepts and moves
+on, `R` rejects, arrows move, Escape closes. Decisions persist in
+`localStorage` under `storageKey` so a reload keeps the reviewer's place;
+pass `storageKey={null}` to keep them in memory. The entry is separate from
+`react-webmcp` so apps that never render it pay nothing for it.
+
 ## Fixture and contract check
 
 `fixtures/webmcp` is a small app that uses both paths and runs against the

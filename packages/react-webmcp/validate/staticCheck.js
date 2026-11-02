@@ -288,7 +288,7 @@ function findToolDefinitions(source) {
         component: enclosingComponentName(path),
         schema: readSchema(
           schemaProperty == null ? null : schemaProperty.value,
-          path
+          path,
         ),
         execute:
           executeProperty == null
@@ -297,7 +297,7 @@ function findToolDefinitions(source) {
                 executeProperty.type === 'ObjectMethod'
                   ? executeProperty
                   : executeProperty.value,
-                path
+                path,
               ),
       });
     },
@@ -333,7 +333,7 @@ function findToolDefinitions(source) {
 // line, component}.
 function checkToolAgainstSource(source, {toolName, componentName}) {
   const definitions = findToolDefinitions(source).filter(
-    definition => definition.name === toolName
+    definition => definition.name === toolName,
   );
   if (definitions.length === 0) {
     return {
@@ -347,7 +347,7 @@ function checkToolAgainstSource(source, {toolName, componentName}) {
   let definition = definitions[0];
   if (componentName != null) {
     const inComponent = definitions.find(
-      candidate => candidate.component === componentName
+      candidate => candidate.component === componentName,
     );
     if (inComponent !== undefined) {
       definition = inComponent;
@@ -403,4 +403,18 @@ function checkToolAgainstSource(source, {toolName, componentName}) {
   };
 }
 
-module.exports = {checkToolAgainstSource, findToolDefinitions};
+module.exports = {
+  checkToolAgainstSource,
+  findToolDefinitions,
+  // Helpers shared with the inference assistant (packages/react-webmcp/infer).
+  enclosingComponentName,
+  getJSXAttribute,
+  getObjectProperty,
+  isToolElement,
+  isUseWebMCPToolCall,
+  propertyKeyName,
+  readExecute,
+  readSchema,
+  resolveExpression,
+  stringValue,
+};
