@@ -165,7 +165,8 @@ accepting it.
    reviewer's edits, plus the rejected ids) to `onExport`, or downloads it as
    `tools.accepted.json`. `yarn infer-tools emit --accepted tools.accepted.json
    --write` then inserts marked `useWebMCPTool` skeletons into the owning
-   components for the developer to finish.
+   components for the developer to finish; add `--evals <dir>` to also get an
+   evals-cli skeleton per accepted tool, with placeholder arguments to fill in.
 
 ```js
 import {ToolReview} from 'react-webmcp/unstable_review';
@@ -193,7 +194,10 @@ and trace checks), and lets the reviewer edit the name, description, safety,
 lifetime and input schema before accepting. Handlers that only flip UI state
 and form inputs that had to be named after a placeholder arrive with a
 warning, so "Needs attention" surfaces them. Keyboard: `/` searches, `A` accepts and moves
-on, `R` rejects, arrows move, Escape closes. Decisions persist in
+on, `R` rejects, arrows move, Escape closes. "Record journey" hides the
+overlay and records what you click and type on the page as journey steps for
+`yarn infer-tools trace --journey`; "Stop and save" hands the journey to
+`onRecordJourney` or downloads it. Decisions persist in
 `localStorage` under `storageKey` so a reload keeps the reviewer's place;
 pass `storageKey={null}` to keep them in memory. The entry is separate from
 `react-webmcp` so apps that never render it pay nothing for it.

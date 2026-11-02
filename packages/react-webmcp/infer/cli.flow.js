@@ -251,6 +251,8 @@ async function runEmit(args: Array<string>): Promise<number> {
     src: 'string',
     write: 'boolean',
     'dry-run': 'boolean',
+    evals: 'string',
+    'force-evals': 'boolean',
   });
   const acceptedFile = path.resolve(requireFlag(flags, 'accepted', 'emit'));
   const write = flags.write === true;
@@ -276,6 +278,31 @@ async function runEmit(args: Array<string>): Promise<number> {
     return 0;
   }
   const plans = planEmit(loaded.accepted, {srcDir});
+  const evalsDir = stringFlag(flags, 'evals');
+  if (evalsDir != null) {
+    const {planEvals, writeEvals} = require('./evals.flow');
+    const evalFiles = planEvals(loaded.accepted);
+    if (write) {
+      const result = writeEvals(path.resolve(evalsDir), evalFiles, {
+        force: flags['force-evals'] === true,
+      });
+      log(
+        `  evals ${result.written.length} file(s) written to ${relativeToCwd(
+          path.resolve(evalsDir),
+        )}${
+          result.kept.length > 0
+            ? `; kept ${result.kept.length} existing (pass --force-evals to overwrite)`
+            : ''
+        }`,
+      );
+    } else {
+      log(
+        `  evals ${evalFiles.length} file(s) would be written to ${relativeToCwd(
+          path.resolve(evalsDir),
+        )}: ${evalFiles.map(file => file.file).join(', ')}`,
+      );
+    }
+  }
   let failed = 0;
   let insertedCount = 0;
   let skippedCount = 0;
@@ -351,6 +378,8 @@ function printHelp(): void {
       "              --src <dir>                 Where the owner files live (default: the proposals' source.dir)",
       '              --write                     Apply the edits (default: print a diff)',
       '              --dry-run                   Print a diff only (the default)',
+      '              --evals <dir>               Also write evals-cli skeletons, one per accepted tool',
+      '              --force-evals               Overwrite eval files you have edited',
       '',
       'Nothing here publishes a tool. Proposals are reviewed by a person, and emit',
       'only writes skeletons marked for review.',

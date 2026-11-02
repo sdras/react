@@ -400,4 +400,48 @@ describe('ToolReview', () => {
     ).toEqual(['src/Cart.js', 'src/Checkout.js']);
     expect(text('.rwr-ListFoot span')).toBe('3 tools in 2 files');
   });
+
+  it('records a journey from the page and hands it back', async () => {
+    const onRecordJourney = jest.fn();
+    await render({proposals: proposals(), onRecordJourney});
+    const page = document.createElement('div');
+    page.innerHTML =
+      '<input placeholder="Something to do" /><button type="button">Add</button>';
+    document.body.appendChild(page);
+    try {
+      await click(buttonWithText('Record journey'));
+      expect(container.querySelector('[role="dialog"]')).toBe(null);
+      expect(text('.rwr-RecordPill')).toContain('Recording journey · 0 steps');
+      const input = page.querySelector('input');
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      ).set;
+      await act(() => {
+        setter.call(input, 'Buy tea');
+        input.dispatchEvent(new Event('change', {bubbles: true}));
+        page.querySelector('button').click();
+      });
+      expect(text('.rwr-RecordPill')).toContain('2 steps');
+      await click(buttonWithText('Stop and save'));
+      expect(onRecordJourney).toHaveBeenCalledTimes(1);
+      const journey = onRecordJourney.mock.calls[0][0];
+      expect(journey.name).toMatch(/^journey-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}$/);
+      expect(journey.steps).toEqual([
+        {fill: 'Something to do', value: 'Buy tea'},
+        {click: 'Add'},
+      ]);
+      expect(container.querySelector('[role="dialog"]')).not.toBe(null);
+      // Cancel discards.
+      await click(buttonWithText('Record journey'));
+      await act(() => {
+        page.querySelector('button').click();
+      });
+      await click(buttonWithText('Cancel'));
+      expect(onRecordJourney).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('[role="dialog"]')).not.toBe(null);
+    } finally {
+      page.remove();
+    }
+  });
 });

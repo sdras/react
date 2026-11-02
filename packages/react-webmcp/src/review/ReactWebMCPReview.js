@@ -25,7 +25,10 @@ export type {
   ToolProposal,
 } from '../ReactWebMCPProposalTypes';
 
+export type {RecordedJourney, RecordedStep} from './JourneyRecorder';
+
 export {ToolReview} from './ToolReview';
+export {startJourneyRecording as unstable_startJourneyRecording} from './JourneyRecorder';
 export {
   buildEntries as unstable_buildReviewEntries,
   buildExport as unstable_buildReviewExport,

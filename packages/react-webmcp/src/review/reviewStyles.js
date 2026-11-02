@@ -186,6 +186,37 @@ export const REVIEW_CSS: string = `
 .rwr-ReadOnly dt { color: var(--rwr-faint); margin: 0; }
 .rwr-ReadOnly dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .rwr-Pre { font-family: var(--rwr-mono); font-size: 11.5px; background: var(--rwr-surface-2); border: 1px solid var(--rwr-line); border-radius: 6px; padding: 8px 10px; margin: 0; overflow: auto; max-height: 180px; }
+.rwr-RecordPill {
+  --rwr-ink: #1a1d23;
+  --rwr-accent: #3b5bdb;
+  --rwr-bad: #b3261e;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 999px;
+  background: var(--rwr-ink);
+  color: #ffffff;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.3;
+  box-shadow: 0 12px 30px rgba(15, 18, 25, 0.28);
+}
+.rwr-RecordPill *, .rwr-RecordPill *::before { box-sizing: border-box; }
+.rwr-RecordDot { width: 9px; height: 9px; border-radius: 50%; background: #e5484d; box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.3); }
+.rwr-RecordCount { font-variant-numeric: tabular-nums; }
+.rwr-RecordBtn { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.35); background: transparent; color: #ffffff; font: inherit; font-weight: 500; cursor: pointer; }
+.rwr-RecordBtn:hover { background: rgba(255, 255, 255, 0.12); }
+.rwr-RecordBtn-primary { background: #ffffff; color: var(--rwr-ink); border-color: #ffffff; }
+.rwr-RecordBtn-primary:hover { background: #e9ecf9; }
+@media (prefers-reduced-motion: no-preference) {
+  .rwr-RecordDot { animation: rwr-pulse 1.2s ease-in-out infinite; }
+  @keyframes rwr-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.3); } 50% { box-shadow: 0 0 0 6px rgba(229, 72, 77, 0.12); } }
+}
 @media (max-width: 900px) {
   .rwr-Root { padding: 8px; }
   .rwr-Header { gap: 12px; padding: 14px 16px 12px; flex-wrap: wrap; }

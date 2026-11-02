@@ -74,7 +74,9 @@ proposals come from its handlers and its form. Accept or reject them, then
 "Export accepted" downloads `tools.accepted.json`, which
 `yarn infer-tools emit --accepted <that file> --src fixtures/webmcp/src`
 turns into a diff (add `--write` to apply it). Decisions are remembered in
-`localStorage` under `fixtures/webmcp`.
+`localStorage` under `fixtures/webmcp`. "Record journey" in the overlay's
+footer hides the overlay, records what you click and type on the page, and
+"Stop and save" downloads a journey file for `yarn infer-tools trace --journey`.
 
 ## Contract check
 

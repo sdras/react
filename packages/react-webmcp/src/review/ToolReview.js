@@ -60,6 +60,8 @@ import {
   schemaRows,
 } from './ReviewModel';
 import {REVIEW_CSS} from './reviewStyles';
+import {journeyFileName, startJourneyRecording} from './JourneyRecorder';
+import type {RecordedJourney, RecordingHandle} from './JourneyRecorder';
 
 const {
   useCallback,
@@ -90,6 +92,9 @@ export type ToolReviewProps = {
   // `sourceRoot` so the links resolve.
   editor?: Editor | null,
   sourceRoot?: string | null,
+  // Receives a recorded journey (steps for `infer trace --journey`) when the
+  // reviewer stops recording. Without it the overlay downloads the JSON.
+  onRecordJourney?: (journey: RecordedJourney) => void,
   // Decisions persist in localStorage under this key so a reload keeps the
   // reviewer's progress. Pass null to keep them in memory only.
   storageKey?: string | null,
@@ -472,6 +477,7 @@ export function ToolReview(props: ToolReviewProps): React.Node {
     onClose,
     onExport,
     onOpenSource,
+    onRecordJourney,
     editor = null,
     sourceRoot = null,
     storageKey = 'default',
@@ -502,6 +508,10 @@ export function ToolReview(props: ToolReviewProps): React.Node {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
   const subtitleId = useId();
+  // While a journey is being recorded the modal gives way to a small
+  // indicator so the reviewer can use the page.
+  const [recording, setRecording] = useState<RecordingHandle | null>(null);
+  const [recordedCount, setRecordedCount] = useState(0);
 
   const entries = useMemo(
     () => buildEntries(proposals, liveTools, decisions),
@@ -634,6 +644,47 @@ export function ToolReview(props: ToolReviewProps): React.Node {
     [decisions, drafts, persist],
   );
 
+  const startRecording = useCallback(() => {
+    if (typeof document === 'undefined' || recording !== null) {
+      return;
+    }
+    const handle = startJourneyRecording({
+      document,
+      ignore: target => target.closest('.rwr-Root, .rwr-RecordPill') != null,
+      onStep: (step, steps) => setRecordedCount(steps.length),
+    });
+    setRecordedCount(0);
+    setRecording(handle);
+  }, [recording]);
+
+  const stopRecording = useCallback(
+    (save: boolean) => {
+      if (recording === null) {
+        return;
+      }
+      const steps = recording.stop();
+      setRecording(null);
+      setRecordedCount(0);
+      if (!save || steps.length === 0) {
+        return;
+      }
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+      const journey: RecordedJourney = {
+        name: 'journey-' + stamp,
+        description:
+          'Recorded in the react-webmcp review overlay. Add {"tool": ...} ' +
+          'steps by hand; run with yarn infer-tools trace --journey.',
+        steps,
+      };
+      if (onRecordJourney != null) {
+        onRecordJourney(journey);
+      } else {
+        downloadJSON(journeyFileName(journey.name), journey);
+      }
+    },
+    [recording, onRecordJourney],
+  );
+
   const handleExport = useCallback(() => {
     const data = buildExport(entries, new Date());
     if (onExport != null) {
@@ -745,6 +796,33 @@ export function ToolReview(props: ToolReviewProps): React.Node {
 
   if (!open) {
     return null;
+  }
+
+  if (recording !== null) {
+    return (
+      <div className="rwr-RecordPill" role="status" aria-live="polite">
+        <style>{REVIEW_CSS}</style>
+        <span className="rwr-RecordDot" aria-hidden="true" />
+        <span>
+          Recording journey ·{' '}
+          <span className="rwr-RecordCount">
+            {pluralize(recordedCount, 'step')}
+          </span>
+        </span>
+        <button
+          type="button"
+          className="rwr-RecordBtn"
+          onClick={() => stopRecording(false)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="rwr-RecordBtn rwr-RecordBtn-primary"
+          onClick={() => stopRecording(true)}>
+          Stop and save
+        </button>
+      </div>
+    );
   }
 
   const remaining = progress.reviewable - progress.reviewed;
@@ -1132,6 +1210,13 @@ export function ToolReview(props: ToolReviewProps): React.Node {
             {counts.accepted} accepted · {remaining} still to review
           </span>
           <div className="rwr-Spacer" />
+          <button
+            type="button"
+            className="rwr-Btn rwr-Ghost"
+            title="Record clicks and form edits on the page as journey steps for yarn infer-tools trace --journey"
+            onClick={startRecording}>
+            Record journey
+          </button>
           <button
             type="button"
             className="rwr-Btn"
