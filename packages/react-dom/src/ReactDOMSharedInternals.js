@@ -9,6 +9,7 @@
 
 import type {EventPriority} from 'react-reconciler/src/ReactEventPriorities';
 import type {HostDispatcher} from './shared/ReactDOMTypes';
+import type {WebMCPInternals} from 'shared/ReactWebMCPTypes';
 
 import noop from 'shared/noop';
 
@@ -22,6 +23,10 @@ type ReactDOMInternals = {
   findDOMNode:
     | null
     | ((componentOrElement: component(...props: any)) => null | Element | Text),
+  // The WebMCP tool registry and helpers, set by the react-dom entry when
+  // enableWebMCP is on, so react-webmcp's tool tree shares them with
+  // unstable_useWebMCPTool.
+  w /* WebMCP */: null | WebMCPInternals,
 };
 
 function requestFormReset(element: HTMLFormElement) {
@@ -47,6 +52,7 @@ const Internals: ReactDOMInternals = {
   d /* ReactDOMCurrentDispatcher */: DefaultDispatcher,
   p /* currentUpdatePriority */: NoEventPriority,
   findDOMNode: null,
+  w /* WebMCP */: null,
 };
 
 export default Internals;

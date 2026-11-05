@@ -12,13 +12,13 @@
 let normalizeToolResult;
 let normalizeToolError;
 
-describe('ReactWebMCP result normalization', () => {
+describe('ReactDOM WebMCP result normalization', () => {
   beforeEach(() => {
     jest.resetModules();
     ({
       normalizeToolResult,
       normalizeToolError,
-    } = require('react-webmcp/src/ReactWebMCPNormalize'));
+    } = require('react-dom/src/shared/webmcp/ReactDOMWebMCPNormalize'));
   });
 
   it('wraps strings in a text block', () => {

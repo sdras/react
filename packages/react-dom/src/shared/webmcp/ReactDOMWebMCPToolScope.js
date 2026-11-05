@@ -8,27 +8,33 @@
  */
 
 import type {ReactContext} from 'shared/ReactTypes';
+import type {ToolScopeContextValue} from 'shared/ReactWebMCPTypes';
 
 import * as React from 'react';
-
-export type ToolScopeContextValue = {
-  // Scope names from the outermost ToolScope inward. Joined with the tool's
-  // local name to form the agent-facing name.
-  path: $ReadOnlyArray<string>,
-  // False while any enclosing ToolScope is unavailable (for example, while
-  // the data behind it is loading).
-  available: boolean,
-};
 
 export const ROOT_TOOL_SCOPE: ToolScopeContextValue = {
   path: [],
   available: true,
 };
 
-export const ToolScopeContext: ReactContext<ToolScopeContextValue> =
-  React.createContext(ROOT_TOOL_SCOPE);
+let ToolScopeContext: ReactContext<ToolScopeContextValue> | null = null;
 
-type ToolScopeProps = {
+// Created on first use so builds with the flag off carry no context object.
+// The tool tree renderer in react-webmcp reads the same object through
+// ReactDOMSharedInternals, which is what lets a DOM-tree scope reach a tool
+// tree root.
+export function getToolScopeContext(): ReactContext<ToolScopeContextValue> {
+  if (ToolScopeContext === null) {
+    const context = React.createContext(ROOT_TOOL_SCOPE);
+    if (__DEV__) {
+      context.displayName = 'WebMCPScope';
+    }
+    ToolScopeContext = context;
+  }
+  return ToolScopeContext;
+}
+
+type WebMCPScopeProps = {
   // Prefixes the names of every tool inside this scope. Omit it to group
   // tools by availability without renaming them.
   name?: string,
@@ -38,12 +44,13 @@ type ToolScopeProps = {
   children?: React$Node,
 };
 
-export function ToolScope({
+export function WebMCPScope({
   name,
   available,
   children,
-}: ToolScopeProps): React$Node {
-  const parent = React.useContext(ToolScopeContext);
+}: WebMCPScopeProps): React$Node {
+  const Context = getToolScopeContext();
+  const parent = React.useContext(Context);
   const isAvailable = available !== false;
   const value = React.useMemo(
     () => ({
@@ -53,9 +60,5 @@ export function ToolScope({
     }),
     [parent, name, isAvailable],
   );
-  return (
-    <ToolScopeContext.Provider value={value}>
-      {children}
-    </ToolScopeContext.Provider>
-  );
+  return React.createElement(Context.Provider, {value}, children);
 }

@@ -16,7 +16,7 @@ const {createProposal} = require('./utils/createProposal');
 
 // Load the review entry (and with it the tool renderer) first so it gets its
 // own reconciler instance.
-const Registry = require('react-webmcp/src/ReactWebMCPRegistry');
+const Registry = require('react-dom/src/shared/webmcp/ReactDOMWebMCPRegistry');
 const {ToolReview} = require('react-webmcp/unstable_review');
 
 // Isolate the DOM renderer, sharing the isomorphic modules.
@@ -307,6 +307,7 @@ describe('ToolReview', () => {
     });
   });
 
+  // @gate enableWebMCP
   it('shows registered tools as exported and follows the registry', async () => {
     Registry.upsertToolRecord(liveRecord('add_item', ['cart']));
     Registry.upsertToolRecord(liveRecord('get_total', ['cart']));

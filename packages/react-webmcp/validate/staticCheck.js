@@ -221,12 +221,17 @@ function enclosingComponentName(path) {
 function isUseWebMCPToolCall(node) {
   const callee = node.callee;
   if (callee.type === 'Identifier') {
-    return callee.name === 'useWebMCPTool' || callee.name === 'useWebMCP';
+    return (
+      callee.name === 'useWebMCPTool' ||
+      callee.name === 'unstable_useWebMCPTool' ||
+      callee.name === 'useWebMCP'
+    );
   }
   if (callee.type === 'MemberExpression' && !callee.computed) {
     return (
       callee.property.type === 'Identifier' &&
       (callee.property.name === 'useWebMCPTool' ||
+        callee.property.name === 'unstable_useWebMCPTool' ||
         callee.property.name === 'useWebMCP')
     );
   }

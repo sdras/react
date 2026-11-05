@@ -3038,11 +3038,6 @@ uri-js@^4.2.2:
   dependencies:
     punycode "^2.1.0"
 
-use-webmcp-tool@^0.2.0:
-  version "0.2.0"
-  resolved "https://registry.yarnpkg.com/use-webmcp-tool/-/use-webmcp-tool-0.2.0.tgz#7154e4b5230128d24efc5f9aab4393b864969304"
-  integrity sha512-kYUpV1xFmX3Wnq68KOM1MbedpRc6mbgWEcVFtWpFPBTGEcuc7Sva4bHjRxM3k8mkGshkwxnLKn9/I4/NP2bTBw==
-
 util-deprecate@^1.0.1, util-deprecate@~1.0.1:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/util-deprecate/-/util-deprecate-1.0.2.tgz#450d4dc9fa70de732762fbd2d4a28981419a0ccf"

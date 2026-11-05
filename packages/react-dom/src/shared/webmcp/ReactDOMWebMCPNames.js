@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {ToolAnnotations} from './ReactWebMCPTypes';
+import type {ToolAnnotations} from 'shared/ReactWebMCPTypes';
 
 // Stringify for signatures and messages without ever throwing
 // (JSON.stringify throws on circular references and BigInt).
@@ -35,7 +35,7 @@ export function resolveQualifiedName(
 
 // Everything an agent can observe about a tool. When the signature is
 // unchanged the tool stays registered; `execute` is never part of it because
-// handlers are read through the instance at call time.
+// handlers are read through a ref at call time.
 export function computeSignature(
   qualifiedName: string,
   description: string,

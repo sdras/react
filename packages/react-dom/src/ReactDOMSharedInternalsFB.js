@@ -9,6 +9,7 @@
 
 import type {EventPriority} from 'react-reconciler/src/ReactEventPriorities';
 import type {HostDispatcher} from './shared/ReactDOMTypes';
+import type {WebMCPInternals} from 'shared/ReactWebMCPTypes';
 
 import {NoEventPriority} from 'react-reconciler/src/ReactEventPriorities';
 
@@ -21,6 +22,7 @@ type ReactDOMInternals = {
   findDOMNode:
     | null
     | ((componentOrElement: component(...props: any)) => null | Element | Text),
+  w /* WebMCP */: null | WebMCPInternals,
 };
 
 const DefaultDispatcher: HostDispatcher = {
@@ -40,6 +42,7 @@ const Internals: ReactDOMInternals = {
   d /* ReactDOMCurrentDispatcher */: DefaultDispatcher,
   p /* currentUpdatePriority */: NoEventPriority,
   findDOMNode: null,
+  w /* WebMCP */: null,
 };
 
 export default Internals;

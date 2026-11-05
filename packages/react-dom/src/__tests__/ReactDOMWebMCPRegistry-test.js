@@ -45,7 +45,7 @@ function record(overrides) {
   };
 }
 
-describe('ReactWebMCP registry', () => {
+describe('ReactDOM WebMCP registry', () => {
   beforeEach(() => {
     jest.resetModules();
     delete globalThis.__REACT_WEBMCP__;
@@ -53,8 +53,8 @@ describe('ReactWebMCP registry', () => {
       assertConsoleErrorDev,
       assertConsoleWarnDev,
     } = require('internal-test-utils'));
-    Registry = require('react-webmcp/src/ReactWebMCPRegistry');
-    Validation = require('react-webmcp/src/ReactWebMCPValidation');
+    Registry = require('react-dom/src/shared/webmcp/ReactDOMWebMCPRegistry');
+    Validation = require('react-dom/src/shared/webmcp/ReactDOMWebMCPValidation');
     Registry.resetRegistryForTesting();
     Validation.resetReportedIssuesForTesting();
   });
@@ -101,13 +101,19 @@ describe('ReactWebMCP registry', () => {
     expect(calls).toEqual([2]);
   });
 
-  it('installs a DEV-only global handle for developer tooling', () => {
+  it('installs a DEV-only global handle for developer tooling on first use', () => {
+    // Nothing is exposed until a tool exists.
+    expect(globalThis.__REACT_WEBMCP__).toBeUndefined();
+    Registry.upsertToolRecord(record());
     if (__DEV__) {
-      expect(globalThis.__REACT_WEBMCP__).toBeDefined();
-      Registry.upsertToolRecord(record());
       const internal = globalThis.__REACT_WEBMCP__.getTools();
       expect(internal).toHaveLength(1);
       expect(internal[0].ownerToken).toBe(OWNER_TOKEN);
+      // A deleted handle is reinstalled by the next record; a foreign one is
+      // replaced without a warning.
+      delete globalThis.__REACT_WEBMCP__;
+      Registry.upsertToolRecord(record({key: 'other', qualifiedName: 'other'}));
+      expect(globalThis.__REACT_WEBMCP__.getTools()).toHaveLength(2);
     } else {
       expect(globalThis.__REACT_WEBMCP__).toBeUndefined();
     }
@@ -118,7 +124,7 @@ describe('ReactWebMCP registry', () => {
     Registry.upsertToolRecord(record({key: 'second'}));
     assertConsoleErrorDev(
       [
-        'react-webmcp: Two tools are registered with the name "add_item". ' +
+        'WebMCP: Two tools are registered with the name "add_item". ' +
           'Agents cannot tell them apart. Give each one a unique `key` and a ' +
           'distinct name, or wrap them in a <ToolScope name> to prefix it.',
       ],
@@ -140,7 +146,7 @@ describe('ReactWebMCP registry', () => {
     );
     assertConsoleErrorDev(
       [
-        'react-webmcp: The inputSchema of "add_item" marks "quantity" as ' +
+        'WebMCP: The inputSchema of "add_item" marks "quantity" as ' +
           'required but does not declare it in `properties`.',
       ],
       {withoutStack: true},
@@ -163,10 +169,10 @@ describe('ReactWebMCP registry', () => {
     );
     assertConsoleWarnDev(
       [
-        'react-webmcp: The tool name "a_very_long_tool_name_that_goes_past_thirty" is longer than 30 characters. Prefer short, action-oriented names like "add_item".',
-        'react-webmcp: The description of "a_very_long_tool_name_that_goes_past_thirty" is longer than 500 characters. Agents may truncate it.',
-        'react-webmcp: The description of parameter "sku" on "a_very_long_tool_name_that_goes_past_thirty" is longer than 150 characters.',
-        'react-webmcp: The tool "a_very_long_tool_name_that_goes_past_thirty" does not declare `safety`. Agents assume a tool mutates state unless it is marked "read", and ask the user before running one marked "irreversible".',
+        'WebMCP: The tool name "a_very_long_tool_name_that_goes_past_thirty" is longer than 30 characters. Prefer short, action-oriented names like "add_item".',
+        'WebMCP: The description of "a_very_long_tool_name_that_goes_past_thirty" is longer than 500 characters. Agents may truncate it.',
+        'WebMCP: The description of parameter "sku" on "a_very_long_tool_name_that_goes_past_thirty" is longer than 150 characters.',
+        'WebMCP: The tool "a_very_long_tool_name_that_goes_past_thirty" does not declare `safety`. Agents assume a tool mutates state unless it is marked "read", and ask the user before running one marked "irreversible".',
       ],
       {withoutStack: true},
     );

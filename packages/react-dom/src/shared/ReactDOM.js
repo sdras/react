@@ -10,6 +10,8 @@
 import type {ReactNodeList} from 'shared/ReactTypes';
 
 import ReactVersion from 'shared/ReactVersion';
+import ReactDOMSharedInternals from 'shared/ReactDOMSharedInternals';
+import {enableWebMCP} from 'shared/ReactFeatureFlags';
 
 import {isValidContainer} from 'react-dom-bindings/src/client/ReactDOMContainer';
 import {createPortal as createPortalImpl} from 'react-reconciler/src/ReactPortal';
@@ -29,6 +31,13 @@ import {
   useFormState,
 } from 'react-dom-bindings/src/shared/ReactDOMFormActions';
 import {browser} from './ReactDOMBrowser';
+import {useWebMCPTool as useWebMCPToolImpl} from './webmcp/useWebMCPTool';
+import {WebMCPScope as WebMCPScopeImpl} from './webmcp/ReactDOMWebMCPToolScope';
+import {
+  getRegisteredTools as getWebMCPToolsImpl,
+  subscribeToRegisteredTools as subscribeToWebMCPToolsImpl,
+} from './webmcp/ReactDOMWebMCPRegistry';
+import {createWebMCPInternals} from './webmcp/ReactDOMWebMCPInternals';
 
 if (__DEV__) {
   if (
@@ -48,6 +57,24 @@ if (__DEV__) {
     );
   }
 }
+
+// WebMCP agent tools, experimental. Exported as undefined when the flag is
+// off, like `browser`, so the stable build carries neither the code nor the
+// behavior. The same handle is published on ReactDOMSharedInternals for
+// react-webmcp's tool tree renderer.
+if (enableWebMCP) {
+  ReactDOMSharedInternals.w = createWebMCPInternals();
+}
+export const unstable_useWebMCPTool: typeof useWebMCPToolImpl | void =
+  enableWebMCP ? useWebMCPToolImpl : undefined;
+export const unstable_WebMCPScope: typeof WebMCPScopeImpl | void = enableWebMCP
+  ? WebMCPScopeImpl
+  : undefined;
+export const unstable_getWebMCPTools: typeof getWebMCPToolsImpl | void =
+  enableWebMCP ? getWebMCPToolsImpl : undefined;
+export const unstable_subscribeToWebMCPTools:
+  | typeof subscribeToWebMCPToolsImpl
+  | void = enableWebMCP ? subscribeToWebMCPToolsImpl : undefined;
 
 function batchedUpdates<A, R>(fn: (a: A) => R, a: A): R {
   // batchedUpdates is now just a passthrough noop

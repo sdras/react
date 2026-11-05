@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {Lifetime, Safety} from './ReactWebMCPTypes';
+import type {Lifetime, Safety} from 'shared/ReactWebMCPTypes';
 
 // The shape of a proposed agent tool, as written by the inference assistant
 // (`packages/react-webmcp/infer`) into `tools.proposals.json` and read by the

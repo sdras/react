@@ -1,6 +1,6 @@
 {
   "name": "react-webmcp",
-  "description": "Derive WebMCP agent tools (document.modelContext) from a React tree: a useWebMCPTool hook wrapper, scoped registries, and a reconciler-backed tool tree with Suspense-aware availability.",
+  "description": "Companion to ReactDOM.unstable_useWebMCPTool: a reconciler-backed tool tree with Suspense-aware availability, a review overlay, and inference tooling for WebMCP agent tools (document.modelContext).",
   "version": "19.3.0",
   "main": "index.js",
   "repository": {
@@ -21,11 +21,11 @@
   },
   "homepage": "https://react.dev/",
   "dependencies": {
-    "scheduler": "^0.28.0",
-    "use-webmcp-tool": "^0.2.0"
+    "scheduler": "^0.28.0"
   },
   "peerDependencies": {
-    "react": "^19.3.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

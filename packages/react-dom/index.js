@@ -22,5 +22,9 @@ export {
   unstable_batchedUpdates,
   useFormState,
   useFormStatus,
+  unstable_useWebMCPTool,
+  unstable_WebMCPScope,
+  unstable_getWebMCPTools,
+  unstable_subscribeToWebMCPTools,
   version,
 } from './src/shared/ReactDOM';

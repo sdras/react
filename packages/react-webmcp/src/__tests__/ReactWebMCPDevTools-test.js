@@ -55,6 +55,7 @@ describe('react-webmcp DevTools integration', () => {
 
   // The registry global that exposes owner tokens is development-only.
   // @gate __DEV__
+  // @gate enableWebMCP
   it('keeps host instances identifiable through the fiber stateNode', async () => {
     document.modelContext = createFakeModelContext();
     const container = document.createElement('div');

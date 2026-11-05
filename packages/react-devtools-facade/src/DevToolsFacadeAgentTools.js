@@ -105,6 +105,9 @@ export function createAgentTools(
         const stack: Array<Fiber> = [root.current];
         while (stack.length > 0 && match === null) {
           const fiber = stack.pop();
+          if (fiber === undefined) {
+            break;
+          }
           if (predicate(fiber, internals)) {
             match = {fiber, internals};
             break;
@@ -269,8 +272,8 @@ export function createAgentTools(
     let ownerSource: SourceLocation | null = null;
     try {
       const sourceResult = treeTools.getComponentSource(owner.uid);
-      if (sourceResult != null && (sourceResult: any).source != null) {
-        ownerSource = (sourceResult: any).source;
+      if (sourceResult != null && (sourceResult as any).source != null) {
+        ownerSource = (sourceResult as any).source;
       }
     } catch (error) {
       ownerSource = null;

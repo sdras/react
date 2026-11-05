@@ -17,13 +17,6 @@ const repoRoot = resolve(__dirname, '..', '..');
 const builtModulesDir = resolve(repoRoot, 'build', 'oss-experimental');
 const sharedDir = resolve(repoRoot, 'packages', 'react-devtools-shared');
 
-// use-webmcp-tool ships ESM only; resolve it from this fixture's node_modules
-// (falling back to the workspace root) so the built react-webmcp bundle and
-// the app share one copy.
-const useWebMCPToolPath = require.resolve('use-webmcp-tool', {
-  paths: [__dirname, repoRoot],
-});
-
 module.exports = {
   mode: __DEV__ ? 'development' : 'production',
   // eval-source-map keeps original file names in stack traces, which the
@@ -52,7 +45,6 @@ module.exports = {
       'react-is': resolve(builtModulesDir, 'react-is'),
       'react-webmcp': resolve(builtModulesDir, 'react-webmcp'),
       scheduler: resolve(builtModulesDir, 'scheduler'),
-      'use-webmcp-tool': useWebMCPToolPath,
     },
   },
   optimization: {
@@ -80,7 +72,7 @@ module.exports = {
     rules: [
       {
         test: /\.js$/,
-        exclude: /node_modules\/(?!use-webmcp-tool)/,
+        exclude: /node_modules/,
         loader: 'babel-loader',
         options: {
           configFile: resolve(sharedDir, 'babel.config.js'),

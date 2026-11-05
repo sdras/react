@@ -129,7 +129,7 @@ const LOG_DIR =
 const SESSION_ID = crypto.randomUUID();
 
 // Budgets from Chrome's WebMCP guidance (kept in sync with
-// src/ReactWebMCPValidation.js).
+// react-dom/src/shared/webmcp/ReactDOMWebMCPValidation.js).
 // How long the registry must stay unchanged before the page counts as settled.
 const REGISTRY_SETTLE_MS = 500;
 

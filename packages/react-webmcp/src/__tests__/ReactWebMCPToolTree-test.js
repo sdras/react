@@ -16,8 +16,8 @@ const {createFakeModelContext} = require('./utils/createFakeModelContext');
 
 // Load the tool renderer first so it gets its own reconciler instance.
 const ReactWebMCP = require('react-webmcp');
-const Registry = require('react-webmcp/src/ReactWebMCPRegistry');
-const Validation = require('react-webmcp/src/ReactWebMCPValidation');
+const Registry = require('react-dom/src/shared/webmcp/ReactDOMWebMCPRegistry');
+const Validation = require('react-dom/src/shared/webmcp/ReactDOMWebMCPValidation');
 
 // Isolate the DOM renderer, sharing the isomorphic modules.
 jest.resetModules();
@@ -72,6 +72,7 @@ describe('ToolTree', () => {
     delete document.modelContext;
   });
 
+  // @gate enableWebMCP
   it('registers every tool in one pass after the commit, in tree order', async () => {
     function App() {
       return (
@@ -129,6 +130,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([]);
   });
 
+  // @gate enableWebMCP
   it('reads the latest execute without re-registering', async () => {
     let setCount;
     function App() {
@@ -154,6 +156,7 @@ describe('ToolTree', () => {
     });
   });
 
+  // @gate enableWebMCP
   it('re-registers exactly once when an agent-visible prop changes', async () => {
     function App({description}) {
       return (
@@ -177,6 +180,7 @@ describe('ToolTree', () => {
     expect(modelContext.tools.get('read_count').description).toBe('Second.');
   });
 
+  // @gate enableWebMCP
   it('unregisters only the tools that leave the tree', async () => {
     function App({showSecond}) {
       return (
@@ -210,6 +214,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([['first', 'registered']]);
   });
 
+  // @gate enableWebMCP
   it('honors Tool enabled and Scope available', async () => {
     function App({enabled, available}) {
       return (
@@ -239,6 +244,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([['cart_add_item', 'registered']]);
   });
 
+  // @gate enableWebMCP
   it('carries the DOM tree ToolScope into the tool root', async () => {
     function App({available}) {
       return (
@@ -268,6 +274,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([['shop_cart_add_item', 'unavailable']]);
   });
 
+  // @gate enableWebMCP
   it('unregisters tools hidden by a Suspense boundary inside the tree', async () => {
     let resolvePromise;
     const promise = new Promise(resolve => {
@@ -326,6 +333,7 @@ describe('ToolTree', () => {
     ]);
   });
 
+  // @gate enableWebMCP
   it('unregisters everything while a DOM Suspense boundary hides the ToolTree', async () => {
     let resolvePromise;
     const promise = new Promise(resolve => {
@@ -370,6 +378,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([['add_item', 'registered']]);
   });
 
+  // @gate enableWebMCP
   it('records an error when registration is refused synchronously', async () => {
     modelContext = createFakeModelContext({failFor: 'refused'});
     document.modelContext = modelContext;
@@ -400,6 +409,7 @@ describe('ToolTree', () => {
     expect(refused.error).toBe('Registration refused for refused');
   });
 
+  // @gate enableWebMCP
   it('records an error when registration rejects asynchronously', async () => {
     modelContext = createFakeModelContext({rejectFor: 'refused'});
     document.modelContext = modelContext;
@@ -424,6 +434,7 @@ describe('ToolTree', () => {
     expect(refused.error).toBe('Async registration refused for refused');
   });
 
+  // @gate enableWebMCP
   it('marks invalid tool definitions as errors without registering them', async () => {
     function App() {
       return (
@@ -448,6 +459,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([['no_execute', 'error']]);
   });
 
+  // @gate enableWebMCP
   it('rejects text children with a helpful error', async () => {
     function App() {
       return <ToolTree>not a tool</ToolTree>;
@@ -457,6 +469,7 @@ describe('ToolTree', () => {
     );
   });
 
+  // @gate enableWebMCP
   it('reports unsupported without touching the browser when modelContext is missing', async () => {
     delete document.modelContext;
     function App() {
@@ -475,6 +488,7 @@ describe('ToolTree', () => {
     expect(statuses()).toEqual([['add_item', 'unsupported']]);
   });
 
+  // @gate enableWebMCP
   it('uses id as the registry key and keeps one registration under StrictMode', async () => {
     function App() {
       return (
@@ -496,6 +510,7 @@ describe('ToolTree', () => {
     expect(Registry.getRegisteredTools().map(t => t.key)).toEqual(['cart:add']);
   });
 
+  // @gate enableWebMCP
   it('normalizes execute results and errors like the hook', async () => {
     const seen = [];
     function App() {

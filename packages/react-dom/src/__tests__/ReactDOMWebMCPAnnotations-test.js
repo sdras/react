@@ -14,15 +14,17 @@ let resolveQualifiedName;
 let computeSignature;
 let safeStringify;
 
-describe('ReactWebMCP annotations and names', () => {
+describe('ReactDOM WebMCP annotations and names', () => {
   beforeEach(() => {
     jest.resetModules();
-    ({resolveAnnotations} = require('react-webmcp/src/ReactWebMCPAnnotations'));
+    ({
+      resolveAnnotations,
+    } = require('react-dom/src/shared/webmcp/ReactDOMWebMCPAnnotations'));
     ({
       resolveQualifiedName,
       computeSignature,
       safeStringify,
-    } = require('react-webmcp/src/ReactWebMCPNames'));
+    } = require('react-dom/src/shared/webmcp/ReactDOMWebMCPNames'));
   });
 
   it('maps safety onto WebMCP annotation hints', () => {

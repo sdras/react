@@ -1,7 +1,11 @@
 import * as React from 'react';
+// The hook path ships in react-dom (experimental, behind enableWebMCP); the
+// tool tree and the registry readers come from the companion package.
 import {
-  useWebMCPTool,
-  ToolScope,
+  unstable_useWebMCPTool as useWebMCPTool,
+  unstable_WebMCPScope as ToolScope,
+} from 'react-dom';
+import {
   ToolTree,
   Tool,
   Scope,

@@ -13,7 +13,7 @@ import type {
   Safety,
   ToolAnnotations,
   ToolExecute,
-} from './ReactWebMCPTypes';
+} from 'shared/ReactWebMCPTypes';
 import type {Container} from './ReactFiberConfigWebMCP';
 
 import * as React from 'react';
@@ -30,7 +30,7 @@ import {
 import {disableLegacyMode} from 'shared/ReactFeatureFlags';
 
 import {createToolContainer} from './ReactFiberConfigWebMCP';
-import {ToolScopeContext} from './ReactWebMCPToolScope';
+import {getWebMCPInternals} from './ReactWebMCPInternals';
 
 function defaultOnDefaultTransitionIndicator() {
   // Noop
@@ -98,7 +98,10 @@ export class ToolTree extends React.Component<ToolTreeProps> {
   }
 
   componentDidMount(): void {
-    const container = createToolContainer(this.props.target);
+    const container = createToolContainer(
+      this.props.target,
+      getWebMCPInternals(),
+    );
     this._container = container;
     this._root = createContainer(
       container,
@@ -154,6 +157,14 @@ export class ToolTree extends React.Component<ToolTreeProps> {
   }
 }
 
-ToolTree.contextType = ToolScopeContext;
+// The DOM tree's unstable_WebMCPScope context, shared through react-dom's
+// internals so a <ToolTree> inherits the scope of the components around it.
+// Without an experimental react-dom the tree registers nothing, so any
+// context object will do.
+const webMCPInternals = getWebMCPInternals();
+ToolTree.contextType =
+  webMCPInternals !== null
+    ? webMCPInternals.c
+    : React.createContext({path: [], available: true});
 
 injectIntoDevTools();

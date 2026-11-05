@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {ModelContextLike} from './ReactWebMCPTypes';
+import type {ModelContextLike} from 'shared/ReactWebMCPTypes';
 
 // WebMCP exposes the imperative API on `document.modelContext`. It is absent
 // on the server, in browsers without the feature, and before a browser

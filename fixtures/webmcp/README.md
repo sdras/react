@@ -74,7 +74,10 @@ proposals come from its handlers and its form. Accept or reject them, then
 "Export accepted" downloads `tools.accepted.json`, which
 `yarn infer-tools emit --accepted <that file> --src fixtures/webmcp/src`
 turns into a diff (add `--write` to apply it). Decisions are remembered in
-`localStorage` under `fixtures/webmcp`. "Record journey" in the overlay's
+`localStorage` under `fixtures/webmcp`. The hook path imports
+`unstable_useWebMCPTool` and `unstable_WebMCPScope` from the experimental
+`react-dom` build; the tree path and the registry readers come from
+`react-webmcp`. "Record journey" in the overlay's
 footer hides the overlay, records what you click and type on the page, and
 "Stop and save" downloads a journey file for `yarn infer-tools trace --journey`.
 

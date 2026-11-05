@@ -14,8 +14,11 @@
 // the app's code keeps compiling and running unchanged.
 
 import type {Node} from 'react';
-import type {UseWebMCPToolOptions, UseWebMCPToolResult} from './useWebMCPTool';
-import type {PublicToolRecord} from './ReactWebMCPTypes';
+import type {
+  UseWebMCPToolOptions,
+  UseWebMCPToolResult,
+} from 'shared/ReactWebMCPTypes';
+import type {PublicToolRecord} from 'shared/ReactWebMCPTypes';
 
 const EMPTY_TOOLS: $ReadOnlyArray<PublicToolRecord> = Object.freeze([]);
 

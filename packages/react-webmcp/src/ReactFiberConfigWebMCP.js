@@ -16,8 +16,9 @@ import type {
   ToolAnnotations,
   ToolResponse,
   ToolStatus,
+  WebMCPInternals,
   WebMCPToolDescriptor,
-} from './ReactWebMCPTypes';
+} from 'shared/ReactWebMCPTypes';
 
 import {REACT_CONTEXT_TYPE} from 'shared/ReactSymbols';
 import {
@@ -25,20 +26,23 @@ import {
   NoEventPriority,
 } from 'react-reconciler/src/ReactEventPriorities';
 
-import {resolveAnnotations} from './ReactWebMCPAnnotations';
-import {getModelContext} from './ReactWebMCPModelContext';
-import {
-  computeSignature,
-  resolveQualifiedName,
-  safeStringify,
-} from './ReactWebMCPNames';
-import {normalizeToolError, normalizeToolResult} from './ReactWebMCPNormalize';
-import {
-  batchToolRecordUpdates,
-  getToolRecord,
-  removeToolRecord,
-  upsertToolRecord,
-} from './ReactWebMCPRegistry';
+// Everything shared with ReactDOM.unstable_useWebMCPTool (the registry, the
+// scope context, naming, annotations and result normalization) reaches this
+// renderer through the container, injected by <ToolTree> from react-dom's
+// internals. The host config never imports react-dom itself, so loading it
+// cannot pull react-dom (and, in builds where react-dom carries its own
+// reconciler, a second reconciler) into the graph while this reconciler is
+// still initializing.
+function internalsOf(container: Container): WebMCPInternals {
+  const w = container.internals;
+  if (w === null) {
+    throw new Error(
+      'react-webmcp needs the experimental build of react-dom, which ' +
+        'provides the WebMCP registry (ReactDOM.unstable_useWebMCPTool).',
+    );
+  }
+  return w;
+}
 
 export {default as rendererVersion} from 'shared/ReactVersion';
 export const rendererPackageName = 'react-webmcp';
@@ -121,17 +125,25 @@ export type Container = {
   // Where registrations go. Defaults to `document.modelContext`; tests and
   // the fixture shim can point it elsewhere.
   getTarget: () => ModelContextLike | null,
+  // react-dom's WebMCP handle, or null with a react-dom that lacks the
+  // feature, in which case the tree registers and records nothing.
+  internals: WebMCPInternals | null,
 };
 
 export function createToolContainer(
   getTarget: ?() => ModelContextLike | null,
+  internals: WebMCPInternals | null,
 ): Container {
   return {
     tag: 'container',
     children: [],
     knownTools: new Set(),
     dirty: false,
-    getTarget: getTarget != null ? getTarget : getModelContext,
+    getTarget:
+      getTarget != null
+        ? getTarget
+        : () => (internals === null ? null : internals.m()),
+    internals,
   };
 }
 
@@ -240,7 +252,7 @@ function handleExecuteError(tool: ToolInstance, error: mixed): ToolResponse {
       // A failing error handler must not mask the original failure.
     }
   }
-  return normalizeToolError(error);
+  return internalsOf(tool.container).e(error);
 }
 
 // The function handed to the browser. It reads `execute` from the instance
@@ -277,7 +289,7 @@ function createExecute(
             if (shaped instanceof Error) {
               throw shaped;
             }
-            resolve(normalizeToolResult(shaped));
+            resolve(internalsOf(tool.container).o(shaped));
           } catch (error) {
             resolve(handleExecuteError(tool, error));
           }
@@ -301,13 +313,14 @@ function onRegistrationFailed(
   }
   tool.registration = null;
   registration.controller.abort();
-  const message = error instanceof Error ? error.message : safeStringify(error);
+  const w = internalsOf(tool.container);
+  const message = error instanceof Error ? error.message : w.j(error);
   tool.failedSignature = registration.signature;
   tool.failedMessage = message;
   if (tool.recordKey !== null) {
-    const existing = getToolRecord(tool.recordKey);
+    const existing = w.g(tool.recordKey);
     if (existing !== undefined) {
-      upsertToolRecord({...existing, status: 'error', error: message});
+      w.u({...existing, status: 'error', error: message});
     }
   }
 }
@@ -354,14 +367,15 @@ function visitTool(
   toRegister: Array<PendingRegistration>,
 ): void {
   const props = tool.props;
+  const w = internalsOf(tool.container);
   const name = typeof props.name === 'string' ? props.name : '';
   const description =
     typeof props.description === 'string' ? props.description : '';
-  const qualifiedName = resolveQualifiedName(path, name);
+  const qualifiedName = w.n(path, name);
   const enabled = props.enabled !== false;
   const safety: Safety | null = props.safety == null ? null : props.safety;
   const lifetime: Lifetime = props.lifetime == null ? 'view' : props.lifetime;
-  const annotations = resolveAnnotations(safety, props.annotations);
+  const annotations = w.a(safety, props.annotations);
   const inputSchema = props.inputSchema;
 
   const valid =
@@ -377,19 +391,14 @@ function visitTool(
         console.error(
           'react-webmcp: A <Tool> needs a name, a description, and an ' +
             'execute function. It was not registered. Received name=%s.',
-          safeStringify(props.name),
+          w.j(props.name),
         );
       }
     }
   }
 
   const supported = target !== null;
-  const signature = computeSignature(
-    qualifiedName,
-    description,
-    inputSchema,
-    annotations,
-  );
+  const signature = w.k(qualifiedName, description, inputSchema, annotations);
   if (tool.failedSignature !== null && tool.failedSignature !== signature) {
     // The definition changed since the failure; allow a retry.
     tool.failedSignature = null;
@@ -436,10 +445,10 @@ function visitTool(
   const recordKey =
     typeof props.id === 'string' && props.id !== '' ? props.id : qualifiedName;
   if (tool.recordKey !== null && tool.recordKey !== recordKey) {
-    removeToolRecord(tool.recordKey);
+    w.r(tool.recordKey);
   }
   tool.recordKey = recordKey;
-  upsertToolRecord({
+  w.u({
     key: recordKey,
     qualifiedName,
     name,
@@ -503,10 +512,15 @@ function walkChildren(
 // tree. Aborts happen before any new registration so a renamed or moved tool
 // never briefly coexists with its previous self.
 export function flushToolTree(container: Container): void {
+  const w = container.internals;
+  if (w === null) {
+    // No experimental react-dom: nothing to register with or record in.
+    return;
+  }
   const target = container.getTarget();
   const seen: Set<ToolInstance> = new Set();
   const toRegister: Array<PendingRegistration> = [];
-  batchToolRecordUpdates(() => {
+  w.b(() => {
     walkChildren(container.children, [], true, false, target, seen, toRegister);
     const removed: Array<ToolInstance> = [];
     container.knownTools.forEach(tool => {
@@ -518,7 +532,7 @@ export function flushToolTree(container: Container): void {
       const tool = removed[i];
       abortRegistration(tool);
       if (tool.recordKey !== null) {
-        removeToolRecord(tool.recordKey);
+        w.r(tool.recordKey);
         tool.recordKey = null;
       }
       container.knownTools.delete(tool);

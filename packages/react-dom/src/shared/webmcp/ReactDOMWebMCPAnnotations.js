@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {Safety, ToolAnnotations} from './ReactWebMCPTypes';
+import type {Safety, ToolAnnotations} from 'shared/ReactWebMCPTypes';
 
 // Maps the author-facing `safety` classification onto the WebMCP annotation
 // hints. Agents assume a tool mutates state unless `readOnlyHint` says

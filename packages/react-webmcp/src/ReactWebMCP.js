@@ -19,14 +19,24 @@ export type {
   ToolResponse,
   ToolSource,
   ToolStatus,
-} from './ReactWebMCPTypes';
-export type {UseWebMCPToolOptions, UseWebMCPToolResult} from './useWebMCPTool';
+  UseWebMCPToolOptions,
+  UseWebMCPToolResult,
+} from 'shared/ReactWebMCPTypes';
 export type {ToolProps, ScopeProps, ToolTreeProps} from './ReactWebMCPToolTree';
 
-export {useWebMCPTool} from './useWebMCPTool';
-export {ToolScope} from './ReactWebMCPToolScope';
+// The tool tree comes first on purpose: it loads this package's reconciler,
+// and in the monorepo's jest setup the reconciler binds to the host config of
+// the renderer entry point required most recently, which must be this one and
+// not react-dom.
 export {ToolTree, Tool, Scope} from './ReactWebMCPToolTree';
+
+// The hook path lives in react-dom behind enableWebMCP and is re-exported
+// here under its original names, so an app can keep one import for both
+// paths. See ReactWebMCPInternals.js for why the import is untyped.
 export {
-  getRegisteredTools as unstable_getRegisteredTools,
-  subscribeToRegisteredTools as unstable_subscribeToRegisteredTools,
-} from './ReactWebMCPRegistry';
+  unstable_useWebMCPTool as useWebMCPTool,
+  unstable_WebMCPScope as ToolScope,
+  unstable_getWebMCPTools as unstable_getRegisteredTools,
+  unstable_subscribeToWebMCPTools as unstable_subscribeToRegisteredTools,
+  // $FlowFixMe[cannot-resolve-module]
+} from 'react-dom';

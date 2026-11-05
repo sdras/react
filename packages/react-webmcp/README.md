@@ -16,15 +16,23 @@ degrades to a no-op and reports `unsupported`.
 
 ## Two ways to declare tools
 
-### The hook: `useWebMCPTool`
+### The hook: `ReactDOM.unstable_useWebMCPTool`
 
-Built on [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool),
-which owns registration, keeps handlers fresh across renders without
-re-registering, and normalizes results into MCP responses. `useWebMCPTool` adds
-scoped names, `safety`, availability, and a registry for developer tooling.
+The hook ships in `react-dom` on the experimental channel, behind the
+`enableWebMCP` feature flag (the exports are `undefined` on stable). It
+registers the tool with `document.modelContext` for as long as the component
+is mounted, enabled, inside available scopes and visible, keeps handlers fresh
+across renders without re-registering, normalizes results into MCP responses,
+and records the tool in a registry for developer tooling. The API grew out of
+[`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool), with
+scoped names, `safety` and Suspense awareness on top. This package re-exports
+it as `useWebMCPTool` and `ToolScope`, so one import covers both paths.
 
 ```js
-import {useWebMCPTool, ToolScope} from 'react-webmcp';
+import {
+  unstable_useWebMCPTool as useWebMCPTool,
+  unstable_WebMCPScope as ToolScope,
+} from 'react-dom';
 
 function TodoTools({todos, addTodo}) {
   useWebMCPTool({
@@ -54,7 +62,7 @@ Options:
 
 | Option | Meaning |
 | --- | --- |
-| `name`, `description`, `inputSchema`, `execute` | The tool as WebMCP sees it. `execute(input, {signal})` receives a signal that aborts on unmount. |
+| `name`, `description`, `inputSchema`, `execute` | The tool as WebMCP sees it. `execute(input, {signal})` receives the browser's signal, or one that aborts when the tool goes away (unmount, or a Suspense boundary hiding the component). |
 | `safety` | `'read'`, `'mutate'` (default) or `'irreversible'`. Maps to the WebMCP `readOnlyHint` / `consequentialHint` annotations. Agents assume a tool mutates state unless told otherwise, and ask the user before running irreversible ones. |
 | `annotations` | Explicit WebMCP hints, merged over the ones derived from `safety`. |
 | `enabled` | Register only while `true`. |
@@ -63,14 +71,25 @@ Options:
 
 Returns `{supported, registered, error, qualifiedName, available}`.
 
-`<ToolScope name available>` prefixes the names of the tools inside it and can
-mark them unavailable (for example while the data they act on is loading).
+`<WebMCPScope name available>` (re-exported here as `ToolScope`) prefixes the
+names of the tools inside it and can mark them unavailable (for example while
+the data they act on is loading).
+
+While a Suspense boundary shows its fallback, the tools of the hidden
+components are unregistered and come back on reveal; the registry keeps them
+as `unavailable` and hidden in the meantime, so tooling can still show them.
+The registry readers are `ReactDOM.unstable_getWebMCPTools` and
+`unstable_subscribeToWebMCPTools` (re-exported here with their old
+`unstable_getRegisteredTools` / `unstable_subscribeToRegisteredTools` names).
 
 ### The tree: `<ToolTree>`
 
 A second React root, rendered by this package's own renderer, that turns
 `<Tool>` and `<Scope>` elements into registrations in one atomic pass per commit.
-Use it when tools should follow Suspense automatically.
+It writes to the same registry as the hook, through react-dom's internals, so
+a page has one list of tools whichever way they were declared. It needs the
+experimental `react-dom` the hook ships in; with any other build it registers
+nothing.
 
 ```js
 import {ToolTree, Scope, Tool} from 'react-webmcp';
@@ -116,7 +135,7 @@ children are not allowed inside `<ToolTree>`.
   chrome-devtools-mcp as `react_get_agent_tools`, with the owning component and
   its source location for each tool.
 - The Components tab of React DevTools shows the tool tree as an extra root and
-  each `useWebMCPTool` call's name and status.
+  each `unstable_useWebMCPTool` call's name and status.
 - In development the registry warns about duplicate agent-facing names,
   `required` schema properties that are not declared, missing `execute`,
   oversized names and descriptions, and tools without a `safety` classification.
@@ -217,7 +236,10 @@ from`, `require`, dynamic `import()`) to `react-webmcp/unstable_noop`,
 whose exports do nothing: `useWebMCPTool` reports `supported: false`,
 `<ToolScope>` renders its children, `<ToolTree>` and `<ToolReview>` render
 nothing, and the registry is empty. The app compiles and runs unchanged while
-the registry, the renderer and the overlay stay out of the bundle.
+the renderer and the overlay stay out of the bundle. The plugin leaves
+`react-dom` imports alone: an app that opts out should import the hook
+through `react-webmcp`, which the plugin rewrites, rather than from
+`react-dom` directly.
 
 ```js
 // babel.config.js

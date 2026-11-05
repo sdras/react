@@ -7,13 +7,12 @@
  * @flow
  */
 
-import type {ToolResponse} from './ReactWebMCPTypes';
+import type {ToolResponse} from 'shared/ReactWebMCPTypes';
 
-import {safeStringify} from './ReactWebMCPNames';
+import {safeStringify} from './ReactDOMWebMCPNames';
 
-// Normalizes whatever a tool's `execute` returns into an MCP tool result. This
-// mirrors the `use-webmcp-tool` hook so both authoring paths hand the agent
-// the same shapes:
+// Normalizes whatever a tool's `execute` returns into an MCP tool result, the
+// same way for the hook and for the tool tree:
 //   string             -> {content: [{type: 'text', text}]}
 //   undefined / null   -> {content: []}
 //   {content: [...]}   -> passed through untouched

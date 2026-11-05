@@ -35,7 +35,7 @@ import type {
   ProposalsFile,
   ToolProposal,
 } from '../src/ReactWebMCPProposalTypes';
-import type {Safety} from '../src/ReactWebMCPTypes';
+import type {Safety} from 'shared/ReactWebMCPTypes';
 
 const fs = require('fs');
 const path = require('path');
@@ -789,7 +789,12 @@ function indexFile(ast: Node, file: string): FileIndex {
 
 function isScopeElement(openingElement: Node): boolean {
   const name = jsxElementName(openingElement);
-  return name === 'ToolScope' || name === 'Scope';
+  return (
+    name === 'ToolScope' ||
+    name === 'Scope' ||
+    name === 'WebMCPScope' ||
+    name === 'unstable_WebMCPScope'
+  );
 }
 
 // <ToolScope name="…"> / <Scope name="…"> ancestors of a node, outermost first.

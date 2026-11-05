@@ -12,7 +12,7 @@
 // "Export accepted" produces. Nothing here touches React or the DOM, so it is
 // unit-tested directly and could back another surface later.
 
-import type {Lifetime, PublicToolRecord, Safety} from '../ReactWebMCPTypes';
+import type {Lifetime, PublicToolRecord, Safety} from 'shared/ReactWebMCPTypes';
 import type {
   ProposalEdits,
   ProposalEvidence,

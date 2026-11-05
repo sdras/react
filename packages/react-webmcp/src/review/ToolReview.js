@@ -19,7 +19,7 @@ import {
   unstable_subscribeToRegisteredTools,
 } from 'react-webmcp';
 
-import type {Lifetime, Safety} from '../ReactWebMCPTypes';
+import type {Lifetime, Safety, PublicToolRecord} from 'shared/ReactWebMCPTypes';
 import type {
   ProposalEdits,
   ProposalEvidence,
@@ -60,6 +60,20 @@ import {
   schemaRows,
 } from './ReviewModel';
 import {REVIEW_CSS} from './reviewStyles';
+
+// The registry readers come from react-dom and are undefined when its WebMCP
+// flag is off; the overlay then shows no live tools instead of failing.
+const NO_LIVE_TOOLS: $ReadOnlyArray<PublicToolRecord> = [];
+function subscribeToLiveTools(listener: () => void): () => void {
+  return typeof unstable_subscribeToRegisteredTools === 'function'
+    ? unstable_subscribeToRegisteredTools(listener)
+    : () => {};
+}
+function getLiveTools(): $ReadOnlyArray<PublicToolRecord> {
+  return typeof unstable_getRegisteredTools === 'function'
+    ? unstable_getRegisteredTools()
+    : NO_LIVE_TOOLS;
+}
 import {journeyFileName, startJourneyRecording} from './JourneyRecorder';
 import type {RecordedJourney, RecordingHandle} from './JourneyRecorder';
 
@@ -487,9 +501,9 @@ export function ToolReview(props: ToolReviewProps): React.Node {
   } = props;
 
   const liveTools = useSyncExternalStore(
-    unstable_subscribeToRegisteredTools,
-    unstable_getRegisteredTools,
-    unstable_getRegisteredTools,
+    subscribeToLiveTools,
+    getLiveTools,
+    getLiveTools,
   );
 
   const [decisions, setDecisions] = useState<DecisionMap>(() =>

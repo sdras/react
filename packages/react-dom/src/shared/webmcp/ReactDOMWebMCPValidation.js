@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {ToolRecord} from './ReactWebMCPTypes';
+import type {ToolRecord} from 'shared/ReactWebMCPTypes';
 
 import hasOwnProperty from 'shared/hasOwnProperty';
 
@@ -197,9 +197,9 @@ export function reportIssues(key: string, issues: Array<ValidationIssue>) {
       }
       reported.add(dedupeKey);
       if (issue.level === 'error') {
-        console.error('react-webmcp: %s', issue.message);
+        console.error('WebMCP: %s', issue.message);
       } else {
-        console.warn('react-webmcp: %s', issue.message);
+        console.warn('WebMCP: %s', issue.message);
       }
     }
   }

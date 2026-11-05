@@ -7,15 +7,15 @@
  * @flow
  */
 
-import type {PublicToolRecord, ToolRecord} from './ReactWebMCPTypes';
+import type {PublicToolRecord, ToolRecord} from 'shared/ReactWebMCPTypes';
 
-import {safeStringify} from './ReactWebMCPNames';
-import {reportIssues, validateToolRecord} from './ReactWebMCPValidation';
+import {safeStringify} from './ReactDOMWebMCPNames';
+import {reportIssues, validateToolRecord} from './ReactDOMWebMCPValidation';
 
-// The in-page registry of every tool React currently owns, from both the hook
-// path and the tool tree. It does not talk to the browser; it is the single
-// view that developer tooling (React DevTools, chrome-devtools-mcp, the CI
-// contract check) reads.
+// The in-page registry of every WebMCP tool React currently owns, from the
+// hook in react-dom and from the tool tree in react-webmcp. It does not talk
+// to the browser; it is the single view that developer tooling (React
+// DevTools, chrome-devtools-mcp, the CI contract check) reads.
 
 const records: Map<string, ToolRecord> = new Map();
 const listeners: Set<() => void> = new Set();
@@ -57,6 +57,20 @@ function recordsAreEqual(a: ToolRecord, b: ToolRecord): boolean {
   );
 }
 
+// The agent-visible definition, as opposed to status and availability. Only a
+// change here is worth validating again; a tool going hidden or disabled is
+// not a new problem.
+function definitionsAreEqual(a: ToolRecord, b: ToolRecord): boolean {
+  return (
+    a.qualifiedName === b.qualifiedName &&
+    a.name === b.name &&
+    a.description === b.description &&
+    a.safety === b.safety &&
+    safeStringify(a.inputSchema) === safeStringify(b.inputSchema) &&
+    safeStringify(a.annotations) === safeStringify(b.annotations)
+  );
+}
+
 function toPublicRecord(record: ToolRecord): PublicToolRecord {
   return {
     key: record.key,
@@ -91,12 +105,17 @@ export function batchToolRecordUpdates<T>(fn: () => T): T {
 }
 
 export function upsertToolRecord(record: ToolRecord): void {
+  if (__DEV__) {
+    installDevToolsHandle();
+  }
   const previous = records.get(record.key);
   if (previous !== undefined && recordsAreEqual(previous, record)) {
     return;
   }
   if (__DEV__) {
-    reportIssues(record.key, validateToolRecord(record, records));
+    if (previous === undefined || !definitionsAreEqual(previous, record)) {
+      reportIssues(record.key, validateToolRecord(record, records));
+    }
   }
   records.set(record.key, record);
   publicSnapshot = null;
@@ -149,28 +168,29 @@ export function resetRegistryForTesting(): void {
 export const REGISTRY_GLOBAL_KEY = '__REACT_WEBMCP__';
 
 // Developer tooling (react-devtools-facade, chrome-devtools-mcp) reads the
-// registry through this handle rather than importing the app's copy of
-// react-webmcp. DEV only: production builds expose nothing.
-if (__DEV__) {
-  const globalObject: any =
-    typeof globalThis !== 'undefined'
-      ? globalThis
-      : typeof window !== 'undefined'
-        ? window
-        : null;
-  if (globalObject !== null) {
-    if (globalObject[REGISTRY_GLOBAL_KEY] == null) {
-      globalObject[REGISTRY_GLOBAL_KEY] = {
-        version: 1,
-        getTools: getToolRecords,
-        subscribe: subscribeToRegisteredTools,
-      };
-    } else {
-      console.warn(
-        'react-webmcp: Multiple copies of react-webmcp were loaded on this ' +
-          'page. Developer tooling will only see the tools of the first copy. ' +
-          'Make sure your bundler resolves a single copy of the package.',
-      );
+// registry through this handle rather than importing react-dom. DEV only, and
+// installed lazily on the first record rather than when the module loads, so
+// a page (or a test) that never registers a tool exposes nothing. The last
+// copy of react-dom to register a tool owns the handle.
+function installDevToolsHandle(): void {
+  if (__DEV__) {
+    const globalObject: any =
+      typeof globalThis !== 'undefined'
+        ? globalThis
+        : typeof window !== 'undefined'
+          ? window
+          : null;
+    if (globalObject === null) {
+      return;
     }
+    const existing = globalObject[REGISTRY_GLOBAL_KEY];
+    if (existing != null && existing.getTools === getToolRecords) {
+      return;
+    }
+    globalObject[REGISTRY_GLOBAL_KEY] = {
+      version: 1,
+      getTools: getToolRecords,
+      subscribe: subscribeToRegisteredTools,
+    };
   }
 }

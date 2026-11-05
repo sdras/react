@@ -109,6 +109,12 @@ export const enableDefaultTransitionIndicator = __EXPERIMENTAL__;
 
 export const enableOptimisticKey = __EXPERIMENTAL__;
 
+// WebMCP agent tools: ReactDOM.unstable_useWebMCPTool and
+// unstable_WebMCPScope register tools with the browser's
+// document.modelContext, and react-dom keeps a registry of them for
+// developer tooling.
+export const enableWebMCP = __EXPERIMENTAL__;
+
 /**
  * Switches Fiber creation to a simple object instead of a constructor.
  */

@@ -875,7 +875,7 @@ const bundles = [
     moduleType: RENDERER,
     entry: 'react-webmcp',
     global: 'ReactWebMCP',
-    externals: ['react'],
+    externals: ['react', 'react-dom'],
     minifyWithProdErrorCodes: false,
     wrapWithModuleBoundaries: false,
     babel: opts =>
