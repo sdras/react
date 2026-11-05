@@ -3,6 +3,7 @@
 const {readdirSync, statSync} = require('fs');
 const {join} = require('path');
 const baseConfig = require('./config.base');
+const {experimentalPackages} = require('../../ReactVersions');
 
 process.env.IS_BUILD = true;
 
@@ -63,6 +64,11 @@ module.exports = Object.assign({}, baseConfig, {
     'packages/react-devtools-facade',
     'packages/react-devtools-shared',
     'packages/react-devtools-cdt-mcp',
+    // Packages published only on the experimental channel have no stable
+    // bundle to test against.
+    ...(process.env.RELEASE_CHANNEL === 'stable'
+      ? experimentalPackages.map(name => `packages/${name}/`)
+      : []),
   ],
   // Don't run bundle tests on -test.internal.* files
   testPathIgnorePatterns: ['/node_modules/', '-test.internal.js$'],

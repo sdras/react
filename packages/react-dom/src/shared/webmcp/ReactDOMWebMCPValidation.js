@@ -168,6 +168,23 @@ export function validateToolRecord(
   return issues;
 }
 
+// Two live components wrote records under one registry key: the same
+// qualified name without distinct keys. The registry keeps the most recent
+// one, so the other disappears from developer tooling.
+export function validateKeyCollision(record: ToolRecord): ValidationIssue {
+  return {
+    level: 'error',
+    rule: 'duplicate-key',
+    message:
+      'Two components registered a tool named "' +
+      record.qualifiedName +
+      '" without distinct keys. Agents cannot tell them apart, and developer ' +
+      'tooling only keeps the most recent one. Give them distinct names, wrap ' +
+      'one in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+      'useWebMCPTool call (`id` on <Tool>).',
+  };
+}
+
 export function validateExecute(
   qualifiedName: string,
   execute: mixed,

@@ -114,8 +114,9 @@ While the boundary shows its fallback the `cart_*` tools are unregistered; they
 come back when the content does. Changing `execute` never re-registers a tool
 (the latest closure is read when the agent calls it); changing anything the
 agent can observe re-registers exactly once. `<Tool>` accepts the same options
-as the hook (`id` instead of `key`); `<Scope name available>` mirrors
-`<ToolScope>`.
+as the hook (`id` instead of `key`), and its `execute` receives the same
+`{signal}`, aborted when the tool is hidden or leaves the tree; `<Scope name
+available>` mirrors `<ToolScope>`.
 
 Why a renderer rather than a hook for this: React keeps a Suspense-hidden tree
 mounted and does not run its effects until it is shown again, so a hook cannot
@@ -136,9 +137,11 @@ children are not allowed inside `<ToolTree>`.
   its source location for each tool.
 - The Components tab of React DevTools shows the tool tree as an extra root and
   each `unstable_useWebMCPTool` call's name and status.
-- In development the registry warns about duplicate agent-facing names,
-  `required` schema properties that are not declared, missing `execute`,
-  oversized names and descriptions, and tools without a `safety` classification.
+- In development the registry warns about duplicate agent-facing names
+  (two components with the same name and no distinct `key`, or distinct keys
+  that resolve to one name), `required` schema properties that are not
+  declared, missing `execute`, oversized names and descriptions, and tools
+  without a `safety` classification.
 
 ## Proposing and reviewing tools
 
@@ -220,7 +223,8 @@ warning, so "Needs attention" surfaces them. Keyboard: `/` searches, `A` accepts
 on, `R` rejects, arrows move, Escape closes. "Record journey" hides the
 overlay and records what you click and type on the page as journey steps for
 `yarn infer-tools trace --journey`; "Stop and save" hands the journey to
-`onRecordJourney` or downloads it. Decisions persist in
+`onRecordJourney` or downloads it. Password and payment fields are never
+recorded; add those steps by hand. Decisions persist in
 `localStorage` under `storageKey` so a reload keeps the reviewer's place;
 pass `storageKey={null}` to keep them in memory. The entry is separate from
 `react-webmcp` so apps that never render it pay nothing for it.
@@ -236,10 +240,12 @@ from`, `require`, dynamic `import()`) to `react-webmcp/unstable_noop`,
 whose exports do nothing: `useWebMCPTool` reports `supported: false`,
 `<ToolScope>` renders its children, `<ToolTree>` and `<ToolReview>` render
 nothing, and the registry is empty. The app compiles and runs unchanged while
-the renderer and the overlay stay out of the bundle. The plugin leaves
-`react-dom` imports alone: an app that opts out should import the hook
-through `react-webmcp`, which the plugin rewrites, rather than from
-`react-dom` directly.
+the renderer and the overlay stay out of the bundle. Named imports of the
+hook path from `react-dom` (`unstable_useWebMCPTool`, `unstable_WebMCPScope`,
+`unstable_getWebMCPTools`, `unstable_subscribeToWebMCPTools`) are redirected
+the same way while the rest of the import stays on `react-dom`. A namespace
+import (`import * as ReactDOM`) or a `require('react-dom')` member access is
+not rewritten, so an app that opts out should import those four by name.
 
 ```js
 // babel.config.js

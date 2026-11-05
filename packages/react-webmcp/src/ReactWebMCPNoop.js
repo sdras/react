@@ -64,3 +64,12 @@ export function unstable_subscribeToRegisteredTools(
 ): () => void {
   return function unsubscribe() {};
 }
+
+// The same stand-ins under the names react-dom exports the hook path as, for
+// the imports the Babel plugin redirects away from 'react-dom'.
+export {
+  useWebMCPTool as unstable_useWebMCPTool,
+  ToolScope as unstable_WebMCPScope,
+  unstable_getRegisteredTools as unstable_getWebMCPTools,
+  unstable_subscribeToRegisteredTools as unstable_subscribeToWebMCPTools,
+};

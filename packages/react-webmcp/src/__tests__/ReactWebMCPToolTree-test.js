@@ -16,20 +16,30 @@ const {createFakeModelContext} = require('./utils/createFakeModelContext');
 
 // Load the tool renderer first so it gets its own reconciler instance.
 const ReactWebMCP = require('react-webmcp');
-const Registry = require('react-dom/src/shared/webmcp/ReactDOMWebMCPRegistry');
-const Validation = require('react-dom/src/shared/webmcp/ReactDOMWebMCPValidation');
+// The react-dom the tool tree registered itself with. The registry is read
+// through its public API, which is all the built bundles expose.
+const ReactDOM = require('react-dom');
 
 // Isolate the DOM renderer, sharing the isomorphic modules.
 jest.resetModules();
 jest.mock('scheduler', () => Scheduler);
 jest.mock('react', () => React);
-// The jest host-config setup forks shared/ReactSharedInternals per module
-// registry; both renderers must see the same dispatcher slot for hooks.
-jest.mock(
-  'shared/ReactSharedInternals',
-  () => React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-);
+mockSharedInternals();
 const ReactDOMClient = require('react-dom/client');
+
+// The jest host-config setup forks shared/ReactSharedInternals per module
+// registry; both renderers must see the same dispatcher slot for hooks. The
+// built bundles already share it through the `react` mock above, and the
+// build config cannot resolve this source path.
+function mockSharedInternals() {
+  if (!process.env.IS_BUILD) {
+    jest.mock(
+      'shared/ReactSharedInternals',
+      () =>
+        React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+    );
+  }
+}
 
 const {ToolTree, Tool, Scope, ToolScope} = ReactWebMCP;
 
@@ -38,7 +48,7 @@ let root;
 let modelContext;
 
 function statuses() {
-  return Registry.getRegisteredTools().map(tool => [
+  return ReactDOM.unstable_getWebMCPTools().map(tool => [
     tool.qualifiedName,
     tool.status,
   ]);
@@ -49,16 +59,8 @@ describe('ToolTree', () => {
     jest.resetModules();
     jest.mock('scheduler', () => Scheduler);
     jest.mock('react', () => React);
-    // The jest host-config setup forks shared/ReactSharedInternals per module
-    // registry; both renderers must see the same dispatcher slot for hooks.
-    jest.mock(
-      'shared/ReactSharedInternals',
-      () =>
-        React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-    );
+    mockSharedInternals();
 
-    Registry.resetRegistryForTesting();
-    Validation.resetReportedIssuesForTesting();
     modelContext = createFakeModelContext();
     document.modelContext = modelContext;
     container = document.createElement('div');
@@ -113,7 +115,7 @@ describe('ToolTree', () => {
       consequentialHint: true,
     });
     expect(
-      Registry.getRegisteredTools().map(t => [
+      ReactDOM.unstable_getWebMCPTools().map(t => [
         t.qualifiedName,
         t.status,
         t.source,
@@ -264,7 +266,7 @@ describe('ToolTree', () => {
     }
     await act(() => root.render(<App available={true} />));
     expect(modelContext.names()).toEqual(['shop_cart_add_item']);
-    expect(Registry.getRegisteredTools()[0].scopePath).toEqual([
+    expect(ReactDOM.unstable_getWebMCPTools()[0].scopePath).toEqual([
       'shop',
       'cart',
     ]);
@@ -402,7 +404,7 @@ describe('ToolTree', () => {
     }
     await act(() => root.render(<App />));
     expect(modelContext.names()).toEqual(['fine']);
-    const refused = Registry.getRegisteredTools().find(
+    const refused = ReactDOM.unstable_getWebMCPTools().find(
       t => t.qualifiedName === 'refused',
     );
     expect(refused.status).toBe('error');
@@ -429,7 +431,7 @@ describe('ToolTree', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    const refused = Registry.getRegisteredTools()[0];
+    const refused = ReactDOM.unstable_getWebMCPTools()[0];
     expect(refused.status).toBe('error');
     expect(refused.error).toBe('Async registration refused for refused');
   });
@@ -507,7 +509,171 @@ describe('ToolTree', () => {
     }
     await act(() => root.render(<App />));
     expect(modelContext.names()).toEqual(['add_item']);
-    expect(Registry.getRegisteredTools().map(t => t.key)).toEqual(['cart:add']);
+    expect(ReactDOM.unstable_getWebMCPTools().map(t => t.key)).toEqual([
+      'cart:add',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('keeps the record of a tool React replaced in one commit', async () => {
+    function App({version}) {
+      return (
+        <ToolTree>
+          <Tool
+            key={version}
+            name="add_item"
+            description="Add."
+            safety="mutate"
+            execute={() => version}
+          />
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App version={1} />));
+    await act(() => root.render(<App version={2} />));
+    // The old host instance left the tree and the new one took its place in
+    // the same commit; the record and the registration belong to the new one.
+    expect(statuses()).toEqual([['add_item', 'registered']]);
+    expect(modelContext.log).toEqual([
+      ['register', 'add_item'],
+      ['abort', 'add_item'],
+      ['register', 'add_item'],
+    ]);
+    expect(await modelContext.executeTool('add_item', {})).toEqual({
+      content: [{type: 'text', text: '2'}],
+    });
+  });
+
+  // @gate enableWebMCP
+  it('shares one registry and one scope with the hook in react-dom', async () => {
+    function HookTool() {
+      ReactDOM.unstable_useWebMCPTool({
+        name: 'list_todos',
+        description: 'List todos.',
+        safety: 'read',
+        execute: () => 'todos',
+      });
+      return null;
+    }
+    function App() {
+      return (
+        <ToolScope name="shop">
+          <HookTool />
+          <ToolTree>
+            <Tool
+              name="add_item"
+              description="Add an item."
+              safety="mutate"
+              execute={() => 'ok'}
+            />
+          </ToolTree>
+        </ToolScope>
+      );
+    }
+    await act(() => root.render(<App />));
+    expect(modelContext.names()).toEqual(['shop_add_item', 'shop_list_todos']);
+    expect(
+      ReactDOM.unstable_getWebMCPTools()
+        .map(t => [t.qualifiedName, t.source, t.status])
+        .sort(),
+    ).toEqual([
+      ['shop_add_item', 'tree', 'registered'],
+      ['shop_list_todos', 'hook', 'registered'],
+    ]);
+    await act(() => root.render(null));
+    expect(modelContext.names()).toEqual([]);
+    expect(statuses()).toEqual([]);
+  });
+
+  // @gate enableWebMCP
+  it('passes execute a signal that aborts when the tool is hidden or removed', async () => {
+    let resolvePromise;
+    const promise = new Promise(resolve => {
+      resolvePromise = resolve;
+    });
+    let resolved = false;
+    function Suspender({suspend}) {
+      if (suspend && !resolved) {
+        throw promise;
+      }
+      return null;
+    }
+    let seenSignal = null;
+    function App({suspend}) {
+      return (
+        <ToolTree>
+          <React.Suspense fallback={null}>
+            <Tool
+              name="slow"
+              description="Slow."
+              safety="read"
+              execute={(input, {signal}) => {
+                seenSignal = signal;
+                return 'started';
+              }}
+            />
+            <Suspender suspend={suspend} />
+          </React.Suspense>
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App suspend={false} />));
+    await modelContext.executeTool('slow', {});
+    expect(seenSignal).not.toBe(null);
+    expect(seenSignal.aborted).toBe(false);
+
+    await act(() => root.render(<App suspend={true} />));
+    expect(seenSignal.aborted).toBe(true);
+
+    await act(async () => {
+      resolved = true;
+      resolvePromise();
+      await promise;
+    });
+    await modelContext.executeTool('slow', {});
+    expect(seenSignal.aborted).toBe(false);
+
+    await act(() => root.render(null));
+    expect(seenSignal.aborted).toBe(true);
+  });
+
+  // @gate enableWebMCP
+  it('does not re-walk the tree when a parent re-renders with inline schema objects', async () => {
+    let flushes = 0;
+    const target = () => {
+      flushes++;
+      return modelContext;
+    };
+    function App({count, description}) {
+      return (
+        <ToolTree target={target}>
+          <Tool
+            name="read_count"
+            description={description}
+            safety="read"
+            inputSchema={{type: 'object', properties: {}}}
+            annotations={{readOnlyHint: true}}
+            execute={() => count}
+          />
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App count={0} description="Read." />));
+    expect(flushes).toBe(1);
+    await act(() => root.render(<App count={1} description="Read." />));
+    await act(() => root.render(<App count={2} description="Read." />));
+    // Same content, new identities: nothing the agent sees changed.
+    expect(flushes).toBe(1);
+    expect(modelContext.registrations()).toEqual(['read_count']);
+    expect(await modelContext.executeTool('read_count', {})).toEqual({
+      content: [{type: 'text', text: '2'}],
+    });
+    // A change the agent can see still goes through, once.
+    await act(() =>
+      root.render(<App count={3} description="Read the counter." />),
+    );
+    expect(flushes).toBe(2);
+    expect(modelContext.registrations()).toEqual(['read_count', 'read_count']);
   });
 
   // @gate enableWebMCP

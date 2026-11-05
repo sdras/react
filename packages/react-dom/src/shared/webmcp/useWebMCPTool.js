@@ -36,7 +36,11 @@ import {
   normalizeToolError,
   normalizeToolResult,
 } from './ReactDOMWebMCPNormalize';
-import {removeToolRecord, upsertToolRecord} from './ReactDOMWebMCPRegistry';
+import {
+  getToolRecord,
+  removeToolRecord,
+  upsertToolRecord,
+} from './ReactDOMWebMCPRegistry';
 import {getToolScopeContext} from './ReactDOMWebMCPToolScope';
 import {reportIssues, validateExecute} from './ReactDOMWebMCPValidation';
 
@@ -243,8 +247,13 @@ export function useWebMCPTool(
     error: errorMessage,
     ownerToken,
   };
+  // Mirrored into a ref by a layout effect, never during render, so the
+  // effects below only ever see a committed record. A render React discards
+  // (an interrupted transition) must not leak into the registry.
   const recordRef = useRef<ToolRecord>(record);
-  recordRef.current = record;
+  useLayoutEffect(() => {
+    recordRef.current = record;
+  });
 
   // An AbortSignal for `execute` that fires when the tool goes away: unmount,
   // or a Suspense boundary hiding the component.
@@ -308,11 +317,16 @@ export function useWebMCPTool(
       // unmount; after a Suspense hide it is restored by the next create.
       controller.abort();
       const current = recordRef.current;
-      upsertToolRecord({
-        ...current,
-        status: 'unavailable',
-        availability: {...current.availability, hidden: true},
-      });
+      const existing = getToolRecord(current.key);
+      // Only touch the record while it is still ours; another component may
+      // own this key by now.
+      if (existing !== undefined && existing.ownerToken === ownerToken) {
+        upsertToolRecord({
+          ...current,
+          status: 'unavailable',
+          availability: {...current.availability, hidden: true},
+        });
+      }
     };
   }, [shouldRegister, signature]);
 
@@ -325,7 +339,7 @@ export function useWebMCPTool(
     }
     upsertToolRecord(recordRef.current);
     return () => {
-      removeToolRecord(recordKey);
+      removeToolRecord(recordKey, ownerToken);
     };
     // `signature` stands in for name/description/inputSchema/annotations.
   }, [

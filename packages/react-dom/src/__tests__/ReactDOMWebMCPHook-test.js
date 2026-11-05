@@ -14,12 +14,12 @@ let React;
 let ReactDOM;
 let ReactDOMClient;
 let ReactDOMServer;
+let Scheduler;
 let act;
+let waitFor;
+let assertLog;
 let assertConsoleErrorDev;
 let createFakeModelContext;
-let Registry;
-let Validation;
-let ModelContextStore;
 let useWebMCPTool;
 let WebMCPScope;
 
@@ -27,35 +27,38 @@ let container;
 let root;
 let modelContext;
 
+// The registry as the public readers expose it, which is all the built
+// bundles offer; the test must not reach into react-dom's source.
+function tools() {
+  return ReactDOM.unstable_getWebMCPTools();
+}
+
 function statuses() {
-  return Registry.getRegisteredTools().map(tool => [
-    tool.qualifiedName,
-    tool.status,
-    tool.source,
-  ]);
+  return tools().map(tool => [tool.qualifiedName, tool.status, tool.source]);
 }
 
 describe('ReactDOM.unstable_useWebMCPTool', () => {
   beforeEach(() => {
+    // A fresh react-dom per test also means a fresh, empty registry.
     jest.resetModules();
     delete globalThis.__REACT_WEBMCP__;
     React = require('react');
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
     ReactDOMServer = require('react-dom/server');
-    ({act, assertConsoleErrorDev} = require('internal-test-utils'));
+    Scheduler = require('scheduler');
+    ({
+      act,
+      waitFor,
+      assertLog,
+      assertConsoleErrorDev,
+    } = require('internal-test-utils'));
     ({
       createFakeModelContext,
     } = require('internal-test-utils/createFakeModelContext'));
-    Registry = require('react-dom/src/shared/webmcp/ReactDOMWebMCPRegistry');
-    Validation = require('react-dom/src/shared/webmcp/ReactDOMWebMCPValidation');
-    ModelContextStore = require('react-dom/src/shared/webmcp/ReactDOMWebMCPModelContextStore');
     useWebMCPTool = ReactDOM.unstable_useWebMCPTool;
     WebMCPScope = ReactDOM.unstable_WebMCPScope;
 
-    Registry.resetRegistryForTesting();
-    Validation.resetReportedIssuesForTesting();
-    ModelContextStore.resetModelContextStoreForTesting();
     modelContext = createFakeModelContext();
     document.modelContext = modelContext;
     container = document.createElement('div');
@@ -64,6 +67,9 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
   });
 
   afterEach(async () => {
+    // A test that fails mid-way (a gated one with the flag off, for instance)
+    // must not leak its yields into the next test's log.
+    Scheduler.unstable_clearLog();
     await act(() => root.unmount());
     document.body.removeChild(container);
     delete document.modelContext;
@@ -127,10 +133,7 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     );
     expect(modelContext.names()).toEqual(['app_todos_add_todo']);
     expect(container.textContent).toBe('app_todos_add_todo');
-    expect(Registry.getRegisteredTools()[0].scopePath).toEqual([
-      'app',
-      'todos',
-    ]);
+    expect(tools()[0].scopePath).toEqual(['app', 'todos']);
   });
 
   // @gate enableWebMCP
@@ -358,7 +361,7 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(container.textContent).toBe('loading');
     expect(modelContext.names()).toEqual([]);
     expect(statuses()).toEqual([['add_item', 'unavailable', 'hook']]);
-    expect(Registry.getRegisteredTools()[0].availability.hidden).toBe(true);
+    expect(tools()[0].availability.hidden).toBe(true);
 
     await act(async () => {
       resolved = true;
@@ -369,7 +372,67 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(modelContext.names()).toEqual(['add_item']);
     expect(modelContext.registrations()).toEqual(['add_item', 'add_item']);
     expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
-    expect(Registry.getRegisteredTools()[0].availability.hidden).toBe(false);
+    expect(tools()[0].availability.hidden).toBe(false);
+  });
+
+  // The record is mirrored into a ref by a layout effect, never during
+  // render. A transition that React interrupts must not leave a record under
+  // a name that never committed.
+  // @gate enableWebMCP
+  it('does not leak a record from a render React discarded', async () => {
+    const never = new Promise(() => {});
+    const Tools = React.memo(function Tools({name}) {
+      Scheduler.log('Tools ' + name);
+      useWebMCPTool({
+        name,
+        description: 'Tool.',
+        safety: 'read',
+        execute: () => 1,
+      });
+      return null;
+    });
+    function Gate({suspend}) {
+      Scheduler.log('Gate');
+      if (suspend) {
+        throw never;
+      }
+      return null;
+    }
+    let setName;
+    let setSuspend;
+    function App() {
+      const [name, _setName] = React.useState('a');
+      const [suspend, _setSuspend] = React.useState(false);
+      setName = _setName;
+      setSuspend = _setSuspend;
+      return (
+        <React.Suspense fallback="loading">
+          <Tools name={name} />
+          <Gate suspend={suspend} />
+        </React.Suspense>
+      );
+    }
+    await act(() => root.render(<App />));
+    assertLog(['Tools a', 'Gate']);
+    expect(modelContext.names()).toEqual(['a']);
+
+    // A transition renames the tool and yields after Tools rendered with the
+    // new name, before anything commits.
+    React.startTransition(() => setName('b'));
+    await waitFor(['Tools b']);
+
+    // An urgent update interrupts it and hides the boundary. Tools bails out
+    // (memo, same props), so only its committed record may be touched.
+    ReactDOM.flushSync(() => setSuspend(true));
+    assertLog(['Gate']);
+    expect(container.textContent).toBe('loading');
+    expect(modelContext.names()).toEqual([]);
+    expect(tools().map(t => [t.key, t.status, t.availability.hidden])).toEqual([
+      ['a', 'unavailable', true],
+    ]);
+
+    await act(() => root.render(null));
+    expect(statuses()).toEqual([]);
   });
 
   // @gate enableWebMCP
@@ -529,6 +592,73 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
         'distinct name, or wrap them in a <ToolScope name> to prefix it.' +
         '\n    in Tool (at **)',
     ]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when two components share one name and no key, and keeps the live record', async () => {
+    function Tool({id}) {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => id,
+      });
+      return null;
+    }
+    function App({showFirst, showSecond}) {
+      return (
+        <>
+          {showFirst ? <Tool id="first" /> : null}
+          {showSecond ? <Tool id="second" /> : null}
+        </>
+      );
+    }
+    await act(() => root.render(<App showFirst={true} showSecond={true} />));
+    assertConsoleErrorDev([
+      'WebMCP: Two components registered a tool named "add_item" without ' +
+        'distinct keys. Agents cannot tell them apart, and developer tooling ' +
+        'only keeps the most recent one. Give them distinct names, wrap one ' +
+        'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+        'useWebMCPTool call (`id` on <Tool>).' +
+        '\n    in App (at **)',
+    ]);
+    expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+
+    // The first component unmounting must not remove the second's record.
+    await act(() => root.render(<App showFirst={false} showSecond={true} />));
+    expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+    expect(modelContext.names()).toEqual(['add_item']);
+
+    await act(() => root.render(<App showFirst={false} showSecond={false} />));
+    expect(statuses()).toEqual([]);
+    expect(modelContext.names()).toEqual([]);
+  });
+
+  // @gate enableWebMCP
+  it('does not warn when a key change replaces the component in one commit', async () => {
+    function Tool({version}) {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => version,
+      });
+      return null;
+    }
+    await act(() => root.render(<Tool key="v1" version={1} />));
+    await act(() => root.render(<Tool key="v2" version={2} />));
+    // The old instance's cleanup ran before the new one registered, and must
+    // not remove the record the new one owns.
+    expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+    expect(modelContext.names()).toEqual(['add_item']);
+    expect(modelContext.log).toEqual([
+      ['register', 'add_item'],
+      ['abort', 'add_item'],
+      ['register', 'add_item'],
+    ]);
+    expect(await modelContext.executeTool('add_item', {})).toEqual({
+      content: [{type: 'text', text: '2'}],
+    });
   });
 
   // @gate enableWebMCP

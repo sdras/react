@@ -177,4 +177,58 @@ describe('ReactDOM WebMCP registry', () => {
       {withoutStack: true},
     );
   });
+  it('removes a record only for the owner that wrote it, when an owner is given', () => {
+    const other = {current: null};
+    Registry.upsertToolRecord(record());
+    Registry.removeToolRecord('add_item', other);
+    expect(Registry.getRegisteredTools()).toHaveLength(1);
+    Registry.removeToolRecord('add_item', OWNER_TOKEN);
+    expect(Registry.getRegisteredTools()).toHaveLength(0);
+    // Without an owner the key goes regardless.
+    Registry.upsertToolRecord(record());
+    Registry.removeToolRecord('add_item');
+    expect(Registry.getRegisteredTools()).toHaveLength(0);
+  });
+
+  it('warns when a live record is overwritten by another owner, not when a hidden one is replaced', () => {
+    const other = {current: null};
+    Registry.upsertToolRecord(record());
+    Registry.upsertToolRecord(record({ownerToken: other}));
+    assertConsoleErrorDev(
+      [
+        'WebMCP: Two components registered a tool named "add_item" without ' +
+          'distinct keys. Agents cannot tell them apart, and developer tooling ' +
+          'only keeps the most recent one. Give them distinct names, wrap one ' +
+          'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+          'useWebMCPTool call (`id` on <Tool>).',
+      ],
+      {withoutStack: true},
+    );
+    expect(Registry.getToolRecord('add_item').ownerToken).toBe(other);
+
+    // A record being torn down (hidden) is a replacement, not a collision.
+    Registry.upsertToolRecord(
+      record({
+        key: 'list_items',
+        qualifiedName: 'list_items',
+        name: 'list_items',
+        status: 'unavailable',
+        availability: {
+          enabled: true,
+          scopeAvailable: true,
+          hidden: true,
+          supported: true,
+        },
+      }),
+    );
+    Registry.upsertToolRecord(
+      record({
+        key: 'list_items',
+        qualifiedName: 'list_items',
+        name: 'list_items',
+        ownerToken: other,
+      }),
+    );
+    expect(Registry.getToolRecord('list_items').ownerToken).toBe(other);
+  });
 });

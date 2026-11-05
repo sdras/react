@@ -83,6 +83,28 @@ describe('JourneyRecorder', () => {
     expect(Recorder.describeFill(anonymous)).toBe(null);
   });
 
+  it('never records password or payment fields', () => {
+    html(`
+      <input type="password" placeholder="Password" />
+      <input placeholder="Card number" autocomplete="cc-number" />
+      <input placeholder="Code" autocomplete="one-time-code" />
+      <input placeholder="Email" autocomplete="email" />
+    `);
+    const [password, card, code, email] = document.querySelectorAll('input');
+    setValue(password, 'hunter2');
+    setValue(card, '4242');
+    setValue(code, '123456');
+    setValue(email, 'a@b.c');
+    expect(Recorder.isSecretField(password)).toBe(true);
+    expect(Recorder.describeFill(password)).toBe(null);
+    expect(Recorder.describeFill(card)).toBe(null);
+    expect(Recorder.describeFill(code)).toBe(null);
+    expect(Recorder.describeFill(email)).toEqual({
+      fill: 'Email',
+      value: 'a@b.c',
+    });
+  });
+
   it('records clicks and committed edits until stopped, ignoring what it is told to', () => {
     html(`
       <div class="overlay"><button type="button">Overlay button</button></div>

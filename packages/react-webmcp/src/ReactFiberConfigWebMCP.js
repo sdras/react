@@ -14,6 +14,7 @@ import type {
   ModelContextLike,
   Safety,
   ToolAnnotations,
+  ToolRecord,
   ToolResponse,
   ToolStatus,
   WebMCPInternals,
@@ -81,6 +82,9 @@ export type ToolInstance = {
   // Set by hideInstance/unhideInstance when a Suspense boundary toggles.
   hidden: boolean,
   registration: Registration | null,
+  // Aborts when a Suspense boundary hides the tool or it leaves the tree, so
+  // an execute in flight can stop: the same contract as the hook's signal.
+  lifetime: AbortController | null,
   // Remembered so a failed registration is not retried on every commit.
   failedSignature: string | null,
   failedMessage: string | null,
@@ -167,16 +171,32 @@ const TOOL_VISIBLE_PROPS = [
 ];
 const SCOPE_VISIBLE_PROPS = ['name', 'available', 'path'];
 
+// Object-valued props (`inputSchema`, `annotations`, the root scope's `path`)
+// are usually written inline, so a new identity on every render is normal;
+// only a different value is a change.
+const CONTENT_COMPARED_PROPS = ['inputSchema', 'annotations', 'path'];
+
 function didVisiblePropsChange(
   keys: Array<string>,
   oldProps: Props,
   newProps: Props,
+  stringify: null | ((value: mixed) => string),
 ): boolean {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
-    if (oldProps[key] !== newProps[key]) {
-      return true;
+    const oldValue = oldProps[key];
+    const newValue = newProps[key];
+    if (oldValue === newValue) {
+      continue;
     }
+    if (
+      stringify !== null &&
+      CONTENT_COMPARED_PROPS.indexOf(key) !== -1 &&
+      stringify(oldValue) === stringify(newValue)
+    ) {
+      continue;
+    }
+    return true;
   }
   return false;
 }
@@ -243,6 +263,14 @@ function abortRegistration(tool: ToolInstance): void {
   }
 }
 
+function abortLifetime(tool: ToolInstance): void {
+  const lifetime = tool.lifetime;
+  if (lifetime !== null) {
+    tool.lifetime = null;
+    lifetime.abort();
+  }
+}
+
 function handleExecuteError(tool: ToolInstance, error: mixed): ToolResponse {
   const onError = tool.props.onError;
   if (typeof onError === 'function') {
@@ -272,9 +300,14 @@ function createExecute(
             'The tool "' + qualifiedName + '" has no execute function.',
           );
         }
+        const lifetime = tool.lifetime;
         result = fn(input, {
           signal:
-            client != null && client.signal != null ? client.signal : null,
+            client != null && client.signal != null
+              ? client.signal
+              : lifetime !== null
+                ? lifetime.signal
+                : null,
         });
       } catch (error) {
         resolve(handleExecuteError(tool, error));
@@ -364,6 +397,7 @@ function visitTool(
   scopeAvailable: boolean,
   hidden: boolean,
   target: ModelContextLike | null,
+  toUpsert: Array<ToolRecord>,
   toRegister: Array<PendingRegistration>,
 ): void {
   const props = tool.props;
@@ -395,6 +429,12 @@ function visitTool(
         );
       }
     }
+  }
+
+  if (hidden) {
+    abortLifetime(tool);
+  } else if (tool.lifetime === null) {
+    tool.lifetime = new AbortController();
   }
 
   const supported = target !== null;
@@ -445,10 +485,10 @@ function visitTool(
   const recordKey =
     typeof props.id === 'string' && props.id !== '' ? props.id : qualifiedName;
   if (tool.recordKey !== null && tool.recordKey !== recordKey) {
-    w.r(tool.recordKey);
+    w.r(tool.recordKey, tool);
   }
   tool.recordKey = recordKey;
-  w.u({
+  toUpsert.push({
     key: recordKey,
     qualifiedName,
     name,
@@ -473,6 +513,7 @@ function walkChildren(
   hidden: boolean,
   target: ModelContextLike | null,
   seen: Set<ToolInstance>,
+  toUpsert: Array<ToolRecord>,
   toRegister: Array<PendingRegistration>,
 ): void {
   for (let i = 0; i < children.length; i++) {
@@ -498,19 +539,31 @@ function walkChildren(
         childHidden,
         target,
         seen,
+        toUpsert,
         toRegister,
       );
     } else {
       seen.add(child);
       child.container.knownTools.add(child);
-      visitTool(child, path, scopeAvailable, childHidden, target, toRegister);
+      visitTool(
+        child,
+        path,
+        scopeAvailable,
+        childHidden,
+        target,
+        toUpsert,
+        toRegister,
+      );
     }
   }
 }
 
 // Reconciles browser registrations and registry records with the committed
 // tree. Aborts happen before any new registration so a renamed or moved tool
-// never briefly coexists with its previous self.
+// never briefly coexists with its previous self, and tools that left the tree
+// give up their records before the remaining tools write theirs, so a host
+// instance React replaced in this commit (a key change) cannot delete its
+// successor's record.
 export function flushToolTree(container: Container): void {
   const w = container.internals;
   if (w === null) {
@@ -519,9 +572,19 @@ export function flushToolTree(container: Container): void {
   }
   const target = container.getTarget();
   const seen: Set<ToolInstance> = new Set();
+  const toUpsert: Array<ToolRecord> = [];
   const toRegister: Array<PendingRegistration> = [];
   w.b(() => {
-    walkChildren(container.children, [], true, false, target, seen, toRegister);
+    walkChildren(
+      container.children,
+      [],
+      true,
+      false,
+      target,
+      seen,
+      toUpsert,
+      toRegister,
+    );
     const removed: Array<ToolInstance> = [];
     container.knownTools.forEach(tool => {
       if (!seen.has(tool)) {
@@ -531,11 +594,15 @@ export function flushToolTree(container: Container): void {
     for (let i = 0; i < removed.length; i++) {
       const tool = removed[i];
       abortRegistration(tool);
+      abortLifetime(tool);
       if (tool.recordKey !== null) {
-        w.r(tool.recordKey);
+        w.r(tool.recordKey, tool);
         tool.recordKey = null;
       }
       container.knownTools.delete(tool);
+    }
+    for (let i = 0; i < toUpsert.length; i++) {
+      w.u(toUpsert[i]);
     }
     if (target !== null) {
       for (let i = 0; i < toRegister.length; i++) {
@@ -591,6 +658,7 @@ export function createInstance(
         container: rootContainer,
         hidden: false,
         registration: null,
+        lifetime: null,
         failedSignature: null,
         failedMessage: null,
         recordKey: null,
@@ -795,7 +863,10 @@ export function commitUpdate(
   instance.props = newProps;
   const keys =
     instance.tag === 'tool' ? TOOL_VISIBLE_PROPS : SCOPE_VISIBLE_PROPS;
-  if (didVisiblePropsChange(keys, oldProps, newProps)) {
+  const w = instance.container.internals;
+  if (
+    didVisiblePropsChange(keys, oldProps, newProps, w === null ? null : w.j)
+  ) {
     instance.container.dirty = true;
   }
 }

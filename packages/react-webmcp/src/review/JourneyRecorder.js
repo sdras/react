@@ -126,8 +126,24 @@ export function fieldLabel(field: Element): string {
   return wrapping == null ? '' : normalize(wrapping.textContent);
 }
 
+// Secrets never reach a journey file: a password or payment field yields no
+// step, so the developer adds it by hand with a value that can be committed.
+export function isSecretField(element: Element): boolean {
+  const type = element.getAttribute('type');
+  if (type != null && type.toLowerCase() === 'password') {
+    return true;
+  }
+  const autocomplete = element.getAttribute('autocomplete');
+  return (
+    autocomplete != null &&
+    /(^|\s)(cc-|one-time-code|current-password|new-password)/i.test(
+      autocomplete,
+    )
+  );
+}
+
 export function describeFill(target: Element): RecordedStep | null {
-  if (!target.matches(FIELD)) {
+  if (!target.matches(FIELD) || isSecretField(target)) {
     return null;
   }
   const label = fieldLabel(target);

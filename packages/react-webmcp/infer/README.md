@@ -68,8 +68,8 @@ yarn infer-tools emit       --accepted <ReviewExport or proposals file> [--src <
   the element and the handler that ran, and writes `trace` evidence per
   proposal plus `replay` evidence for tools the journey calls, mutating ones
   included. The review overlay's "Record journey" button writes journey files
-  from what you do on the page; add `tool` steps by hand. Needs Node 20.19,
-  22.12 or newer.
+  from what you do on the page (password and payment fields are never
+  recorded); add `tool` steps by hand. Needs Node 20.19, 22.12 or newer.
 - `emit` takes the accepted proposals (a `ReviewExport` from the review
   overlay, or a proposals file whose entries were marked `accepted`) and
   inserts a marked `useWebMCPTool` skeleton at the top of each owning

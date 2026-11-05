@@ -14,7 +14,10 @@ const os = require('os');
 const path = require('path');
 const babel = require('@babel/core');
 
-const plugin = require('react-webmcp/babel').default;
+// The source entry re-exports a default; the built CommonJS bundle is the
+// plugin function itself, like react-refresh/babel.
+const loaded = require('react-webmcp/babel');
+const plugin = typeof loaded === 'function' ? loaded : loaded.default;
 const {isWebMCPEnabledFor} = require('react-webmcp/src/ReactWebMCPBabelPlugin');
 
 const SOURCE = [
@@ -45,6 +48,24 @@ function sources(code) {
   ).map(match => match[1]);
 }
 
+// Babel's generator picks its own quotes and spacing.
+function normalize(code) {
+  return code
+    .replace(/"/g, "'")
+    .replace(/\s+/g, ' ')
+    .replace(/\{\s+/g, '{')
+    .replace(/\s+\}/g, '}')
+    .trim();
+}
+
+const REACT_DOM_SOURCE = [
+  "import {unstable_useWebMCPTool as useWebMCPTool, createPortal} from 'react-dom';",
+  "import {unstable_WebMCPScope} from 'react-dom';",
+  "import * as ReactDOM from 'react-dom';",
+  "export {unstable_getWebMCPTools, flushSync} from 'react-dom';",
+  'const tools = ReactDOM.unstable_getWebMCPTools();',
+].join('\n');
+
 let tmp;
 
 describe('react-webmcp/babel', () => {
@@ -69,6 +90,30 @@ describe('react-webmcp/babel', () => {
       // A local `require` binding is not Node's require.
       'react-webmcp',
     ]);
+  });
+
+  it('moves the hook path out of react-dom imports when disabled, leaving the rest', () => {
+    const code = transform(REACT_DOM_SOURCE, {enabled: false});
+    expect(normalize(code)).toBe(
+      normalize(
+        [
+          "import { createPortal } from 'react-dom';",
+          "import { unstable_useWebMCPTool as useWebMCPTool } from 'react-webmcp/unstable_noop';",
+          "import { unstable_WebMCPScope } from 'react-webmcp/unstable_noop';",
+          // A namespace import cannot be split; it is documented as such.
+          "import * as ReactDOM from 'react-dom';",
+          "export { flushSync } from 'react-dom';",
+          "export { unstable_getWebMCPTools } from 'react-webmcp/unstable_noop';",
+          'const tools = ReactDOM.unstable_getWebMCPTools();',
+        ].join('\n'),
+      ),
+    );
+  });
+
+  it('leaves react-dom imports alone when enabled', () => {
+    expect(normalize(transform(REACT_DOM_SOURCE, {enabled: true}))).toBe(
+      normalize(REACT_DOM_SOURCE),
+    );
   });
 
   it('leaves the code alone when enabled', () => {

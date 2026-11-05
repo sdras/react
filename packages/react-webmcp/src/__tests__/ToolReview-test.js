@@ -13,50 +13,60 @@ const React = require('react');
 const Scheduler = require('scheduler');
 const {act} = require('internal-test-utils');
 const {createProposal} = require('./utils/createProposal');
+const {createFakeModelContext} = require('./utils/createFakeModelContext');
 
 // Load the review entry (and with it the tool renderer) first so it gets its
 // own reconciler instance.
-const Registry = require('react-dom/src/shared/webmcp/ReactDOMWebMCPRegistry');
 const {ToolReview} = require('react-webmcp/unstable_review');
+// The react-dom the overlay reads the registry from; tools registered through
+// its hook are what the overlay lists as exported.
+const ReactDOM = require('react-dom');
 
 // Isolate the DOM renderer, sharing the isomorphic modules.
 jest.resetModules();
 jest.mock('scheduler', () => Scheduler);
 jest.mock('react', () => React);
-jest.mock(
-  'shared/ReactSharedInternals',
-  () => React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-);
+mockSharedInternals();
 const ReactDOMClient = require('react-dom/client');
+
+// The jest host-config setup forks shared/ReactSharedInternals per module
+// registry; both renderers must see the same dispatcher slot for hooks. The
+// built bundles already share it through the `react` mock above, and the
+// build config cannot resolve this source path.
+function mockSharedInternals() {
+  if (!process.env.IS_BUILD) {
+    jest.mock(
+      'shared/ReactSharedInternals',
+      () =>
+        React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+    );
+  }
+}
 
 let container;
 let root;
 let storageKey;
 let keyCounter = 0;
 
-function liveRecord(name, scopePath, overrides = {}) {
-  const qualifiedName = scopePath.concat(name).join('_');
-  return {
-    key: qualifiedName,
-    qualifiedName,
+// Tools registered in the page through react-dom's hook, inside a scope.
+function LiveTool({name}) {
+  ReactDOM.unstable_useWebMCPTool({
     name,
-    scopePath,
-    description: overrides.description || 'Live ' + name + '.',
-    inputSchema: null,
-    annotations: {},
-    safety: overrides.safety === undefined ? 'read' : overrides.safety,
-    lifetime: 'view',
-    source: overrides.source || 'hook',
-    status: 'registered',
-    availability: {
-      enabled: true,
-      scopeAvailable: true,
-      hidden: false,
-      supported: true,
-    },
-    error: null,
-    ownerToken: {},
-  };
+    description: 'Live ' + name + '.',
+    safety: 'read',
+    execute: () => name,
+  });
+  return null;
+}
+
+function LiveTools({names}) {
+  return (
+    <ReactDOM.unstable_WebMCPScope name="cart">
+      {names.map(name => (
+        <LiveTool key={name} name={name} />
+      ))}
+    </ReactDOM.unstable_WebMCPScope>
+  );
 }
 
 function proposals() {
@@ -94,9 +104,14 @@ function proposals() {
   ];
 }
 
-async function render(props) {
+async function render(props, siblings = null) {
   await act(() => {
-    root.render(<ToolReview storageKey={storageKey} {...props} />);
+    root.render(
+      <>
+        {siblings}
+        <ToolReview storageKey={storageKey} {...props} />
+      </>,
+    );
   });
 }
 
@@ -150,12 +165,8 @@ describe('ToolReview', () => {
     jest.resetModules();
     jest.mock('scheduler', () => Scheduler);
     jest.mock('react', () => React);
-    jest.mock(
-      'shared/ReactSharedInternals',
-      () =>
-        React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-    );
-    Registry.resetRegistryForTesting();
+    mockSharedInternals();
+    document.modelContext = createFakeModelContext();
     localStorage.clear();
     storageKey = 'test-' + ++keyCounter;
     container = document.createElement('div');
@@ -169,6 +180,7 @@ describe('ToolReview', () => {
     });
     container.remove();
     document.body.style.overflow = '';
+    delete document.modelContext;
   });
 
   it('renders nothing while closed', async () => {
@@ -309,9 +321,10 @@ describe('ToolReview', () => {
 
   // @gate enableWebMCP
   it('shows registered tools as exported and follows the registry', async () => {
-    Registry.upsertToolRecord(liveRecord('add_item', ['cart']));
-    Registry.upsertToolRecord(liveRecord('get_total', ['cart']));
-    await render({proposals: proposals()});
+    await render(
+      {proposals: proposals()},
+      <LiveTools names={['add_item', 'get_total']} />,
+    );
     expect(rows()).toEqual([
       ['cart_add_item', 'exported', ''],
       ['cart_clear', 'proposed', 'selected'],
@@ -325,14 +338,16 @@ describe('ToolReview', () => {
     );
     expect(buttonWithText('Accept and next')).toBe(undefined);
 
-    // A tool registered later shows up without a re-render from the app.
-    await act(() => {
-      Registry.upsertToolRecord(liveRecord('list_items', ['cart']));
-    });
+    // A tool registered later shows up: the overlay follows the registry.
+    await render(
+      {proposals: proposals()},
+      <LiveTools names={['add_item', 'get_total', 'list_items']} />,
+    );
     expect(rows().map(row => row[0])).toContain('cart_list_items');
-    await act(() => {
-      Registry.removeToolRecord('cart_list_items');
-    });
+    await render(
+      {proposals: proposals()},
+      <LiveTools names={['add_item', 'get_total']} />,
+    );
     expect(rows().map(row => row[0])).not.toContain('cart_list_items');
   });
 

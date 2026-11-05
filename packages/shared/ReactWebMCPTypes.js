@@ -168,8 +168,8 @@ export type UseWebMCPToolResult = {
 export type WebMCPInternals = {
   // upsertToolRecord
   u: (record: ToolRecord) => void,
-  // removeToolRecord
-  r: (key: string) => void,
+  // removeToolRecord; with an owner token only that owner's record goes
+  r: (key: string, ownerToken?: mixed) => void,
   // getToolRecord
   g: (key: string) => ToolRecord | void,
   // batchToolRecordUpdates

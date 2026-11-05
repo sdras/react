@@ -10,7 +10,11 @@
 import type {PublicToolRecord, ToolRecord} from 'shared/ReactWebMCPTypes';
 
 import {safeStringify} from './ReactDOMWebMCPNames';
-import {reportIssues, validateToolRecord} from './ReactDOMWebMCPValidation';
+import {
+  reportIssues,
+  validateKeyCollision,
+  validateToolRecord,
+} from './ReactDOMWebMCPValidation';
 
 // The in-page registry of every WebMCP tool React currently owns, from the
 // hook in react-dom and from the tool tree in react-webmcp. It does not talk
@@ -113,6 +117,15 @@ export function upsertToolRecord(record: ToolRecord): void {
     return;
   }
   if (__DEV__) {
+    if (
+      previous !== undefined &&
+      previous.ownerToken !== record.ownerToken &&
+      !previous.availability.hidden
+    ) {
+      // Another live component owns this key. A record that is being torn
+      // down (hidden) is a replacement, not a collision.
+      reportIssues(record.key, [validateKeyCollision(record)]);
+    }
     if (previous === undefined || !definitionsAreEqual(previous, record)) {
       reportIssues(record.key, validateToolRecord(record, records));
     }
@@ -122,11 +135,20 @@ export function upsertToolRecord(record: ToolRecord): void {
   emit();
 }
 
-export function removeToolRecord(key: string): void {
-  if (records.delete(key)) {
-    publicSnapshot = null;
-    emit();
+// With an owner token, only that owner's record is removed: a stale cleanup
+// (an unmounted component, a host instance React replaced) must not delete a
+// record another owner has taken over since.
+export function removeToolRecord(key: string, ownerToken?: mixed): void {
+  const existing = records.get(key);
+  if (existing === undefined) {
+    return;
   }
+  if (ownerToken !== undefined && existing.ownerToken !== ownerToken) {
+    return;
+  }
+  records.delete(key);
+  publicSnapshot = null;
+  emit();
 }
 
 export function getToolRecord(key: string): ToolRecord | void {

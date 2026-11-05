@@ -36,11 +36,15 @@ jest.resetModules();
 jest.mock('scheduler', () => Scheduler);
 jest.mock('react', () => React);
 // The jest host-config setup forks shared/ReactSharedInternals per module
-// registry; both renderers must see the same dispatcher slot for hooks.
-jest.mock(
-  'shared/ReactSharedInternals',
-  () => React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-);
+// registry; both renderers must see the same dispatcher slot for hooks. The
+// built bundles already share it through the `react` mock above, and the
+// build config cannot resolve this source path.
+if (!process.env.IS_BUILD) {
+  jest.mock(
+    'shared/ReactSharedInternals',
+    () => React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  );
+}
 const ReactDOMClient = require('react-dom/client');
 
 describe('react-webmcp DevTools integration', () => {

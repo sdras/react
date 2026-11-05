@@ -72,5 +72,13 @@ describe('react-webmcp/unstable_noop', () => {
     const unsubscribe = Noop.unstable_subscribeToRegisteredTools(() => {});
     expect(typeof unsubscribe).toBe('function');
     unsubscribe();
+    // The names react-dom exports the hook path as, for the imports the Babel
+    // plugin redirects away from react-dom.
+    expect(Noop.unstable_useWebMCPTool).toBe(Noop.useWebMCPTool);
+    expect(Noop.unstable_WebMCPScope).toBe(Noop.ToolScope);
+    expect(Noop.unstable_getWebMCPTools).toBe(Noop.unstable_getRegisteredTools);
+    expect(Noop.unstable_subscribeToWebMCPTools).toBe(
+      Noop.unstable_subscribeToRegisteredTools,
+    );
   });
 });

@@ -26,6 +26,18 @@ import * as path from 'path';
 const REWRITTEN_SOURCES = ['react-webmcp', 'react-webmcp/unstable_review'];
 const NOOP_SOURCE = 'react-webmcp/unstable_noop';
 
+// The hook path ships in react-dom. Without the opt-in, named imports of
+// these move to the no-op module too (the rest of the import stays on
+// react-dom), so a tool declared through react-dom registers nothing either.
+// A namespace import or a `require('react-dom')` member access is left alone.
+const REACT_DOM_SOURCE = 'react-dom';
+const REACT_DOM_WEBMCP_EXPORTS = [
+  'unstable_useWebMCPTool',
+  'unstable_WebMCPScope',
+  'unstable_getWebMCPTools',
+  'unstable_subscribeToWebMCPTools',
+];
+
 export type ReactWebMCPBabelPluginOptions = {
   enabled?: boolean,
   root?: string,
@@ -127,6 +139,55 @@ export default function ReactWebMCPBabelPlugin(
     );
   }
 
+  // The name a specifier takes from the module: `imported` for an import,
+  // `local` for a re-export. Type-only specifiers are left where they are.
+  function webMCPNameOf(specifier: any): string | null {
+    if (specifier.importKind === 'type' || specifier.exportKind === 'type') {
+      return null;
+    }
+    let node;
+    if (specifier.type === 'ImportSpecifier') {
+      node = specifier.imported;
+    } else if (specifier.type === 'ExportSpecifier') {
+      node = specifier.local;
+    } else {
+      return null;
+    }
+    const name = node.type === 'StringLiteral' ? node.value : node.name;
+    return REACT_DOM_WEBMCP_EXPORTS.indexOf(name) !== -1 ? name : null;
+  }
+
+  // Splits the WebMCP names out of a react-dom import or re-export into a
+  // sibling declaration from the no-op module. Returns false when there is
+  // nothing to move.
+  function splitReactDOMDeclaration(
+    nodePath: any,
+    build: (specifiers: Array<any>) => any,
+  ): boolean {
+    const node = nodePath.node;
+    const moved = [];
+    const kept = [];
+    for (let i = 0; i < node.specifiers.length; i++) {
+      const specifier = node.specifiers[i];
+      if (webMCPNameOf(specifier) !== null) {
+        moved.push(specifier);
+      } else {
+        kept.push(specifier);
+      }
+    }
+    if (moved.length === 0) {
+      return false;
+    }
+    const replacement = build(moved);
+    if (kept.length === 0) {
+      nodePath.replaceWith(replacement);
+    } else {
+      node.specifiers = kept;
+      nodePath.insertAfter(replacement);
+    }
+    return true;
+  }
+
   return {
     name: 'react-webmcp',
     pre() {
@@ -134,18 +195,48 @@ export default function ReactWebMCPBabelPlugin(
     },
     visitor: {
       ImportDeclaration(nodePath: any, state: PluginState) {
-        if (shouldRewrite(nodePath.node.source.value) && !isEnabled(state)) {
-          nodePath.node.source = t.stringLiteral(NOOP_SOURCE);
+        const node = nodePath.node;
+        if (shouldRewrite(node.source.value)) {
+          if (!isEnabled(state)) {
+            node.source = t.stringLiteral(NOOP_SOURCE);
+          }
+          return;
+        }
+        if (
+          node.source.value === REACT_DOM_SOURCE &&
+          node.importKind !== 'type' &&
+          node.importKind !== 'typeof' &&
+          !isEnabled(state)
+        ) {
+          splitReactDOMDeclaration(nodePath, specifiers =>
+            t.importDeclaration(specifiers, t.stringLiteral(NOOP_SOURCE)),
+          );
         }
       },
       ExportNamedDeclaration(nodePath: any, state: PluginState) {
-        const source = nodePath.node.source;
+        const node = nodePath.node;
+        const source = node.source;
+        if (source == null) {
+          return;
+        }
+        if (shouldRewrite(source.value)) {
+          if (!isEnabled(state)) {
+            node.source = t.stringLiteral(NOOP_SOURCE);
+          }
+          return;
+        }
         if (
-          source != null &&
-          shouldRewrite(source.value) &&
+          source.value === REACT_DOM_SOURCE &&
+          node.exportKind !== 'type' &&
           !isEnabled(state)
         ) {
-          nodePath.node.source = t.stringLiteral(NOOP_SOURCE);
+          splitReactDOMDeclaration(nodePath, specifiers =>
+            t.exportNamedDeclaration(
+              null,
+              specifiers,
+              t.stringLiteral(NOOP_SOURCE),
+            ),
+          );
         }
       },
       ExportAllDeclaration(nodePath: any, state: PluginState) {
