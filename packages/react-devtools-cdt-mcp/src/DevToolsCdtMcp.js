@@ -8,7 +8,9 @@
  */
 
 import {installFacade, createTools} from 'react-devtools-facade';
-import {enableWebMCP} from 'shared/ReactFeatureFlags';
+// With the extension: this package is ESM ("type": "module"), so bundlers
+// require its imports to be fully specified, as with './DevToolsCdtMcp.js'.
+import {enableWebMCP} from 'shared/ReactFeatureFlags.js';
 
 import type {Facade, Tools} from 'react-devtools-facade';
 
