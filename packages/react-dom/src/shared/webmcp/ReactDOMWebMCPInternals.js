@@ -13,6 +13,7 @@ import {resolveAnnotations} from './ReactDOMWebMCPAnnotations';
 import {getModelContext} from './ReactDOMWebMCPModelContext';
 import {
   computeSignature,
+  contentKey,
   resolveQualifiedName,
   safeStringify,
 } from './ReactDOMWebMCPNames';
@@ -22,10 +23,12 @@ import {
 } from './ReactDOMWebMCPNormalize';
 import {
   batchToolRecordUpdates,
+  checkToolRecordCollisions,
   getToolRecord,
   removeToolRecord,
   upsertToolRecord,
 } from './ReactDOMWebMCPRegistry';
+import {combineAbortSignals} from './ReactDOMWebMCPSignal';
 import {getToolScopeContext} from './ReactDOMWebMCPToolScope';
 
 // The handle react-dom publishes on ReactDOMSharedInternals (`w`) when
@@ -37,6 +40,7 @@ export function createWebMCPInternals(): WebMCPInternals {
     u: upsertToolRecord,
     r: removeToolRecord,
     g: getToolRecord,
+    v: checkToolRecordCollisions,
     b: batchToolRecordUpdates,
     c: getToolScopeContext(),
     n: resolveQualifiedName,
@@ -46,5 +50,7 @@ export function createWebMCPInternals(): WebMCPInternals {
     e: normalizeToolError,
     m: getModelContext,
     j: safeStringify,
+    h: contentKey,
+    s: combineAbortSignals,
   };
 }

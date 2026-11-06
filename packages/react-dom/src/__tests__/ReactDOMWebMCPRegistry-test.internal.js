@@ -16,6 +16,11 @@ let assertConsoleWarnDev;
 
 const OWNER_TOKEN = {current: null};
 
+// A record from another component: a different owner token.
+function other(overrides) {
+  return record({ownerToken: {current: null}, ...overrides});
+}
+
 function record(overrides) {
   return {
     key: 'add_item',
@@ -80,12 +85,16 @@ describe('ReactDOM WebMCP registry', () => {
     const unsubscribe = Registry.subscribeToRegisteredTools(() => {
       calls.push(Registry.getRegisteredTools().length);
     });
+    const second = other({key: 'other', qualifiedName: 'other'});
     Registry.upsertToolRecord(record());
-    Registry.upsertToolRecord(record({key: 'other', qualifiedName: 'other'}));
-    Registry.removeToolRecord('other');
+    Registry.upsertToolRecord(second);
+    Registry.removeToolRecord(second.ownerToken);
+    expect(calls).toEqual([1, 2, 1]);
+    // Removing an owner without a record is not a change.
+    Registry.removeToolRecord(second.ownerToken);
     expect(calls).toEqual([1, 2, 1]);
     unsubscribe();
-    Registry.removeToolRecord('add_item');
+    Registry.removeToolRecord(OWNER_TOKEN);
     expect(calls).toEqual([1, 2, 1]);
   });
 
@@ -96,9 +105,45 @@ describe('ReactDOM WebMCP registry', () => {
     });
     Registry.batchToolRecordUpdates(() => {
       Registry.upsertToolRecord(record());
-      Registry.upsertToolRecord(record({key: 'b', qualifiedName: 'b'}));
+      Registry.upsertToolRecord(other({key: 'b', qualifiedName: 'b'}));
     });
     expect(calls).toEqual([2]);
+  });
+
+  it('keeps one record per owner and reads them back by owner', () => {
+    expect(Registry.upsertToolRecord(record())).toBe(true);
+    expect(Registry.upsertToolRecord(record())).toBe(false);
+    // The owner renamed its tool: the old key goes with it.
+    expect(
+      Registry.upsertToolRecord(record({key: 'renamed', qualifiedName: 'x'})),
+    ).toBe(true);
+    expect(Registry.getRegisteredTools().map(t => t.key)).toEqual(['renamed']);
+    expect(Registry.getToolRecord(OWNER_TOKEN).key).toBe('renamed');
+    expect(Registry.getToolRecord({current: null})).toBe(undefined);
+    Registry.removeToolRecord(OWNER_TOKEN);
+    expect(Registry.getRegisteredTools()).toHaveLength(0);
+  });
+
+  it('shows the live, most recently written record for a contested key', () => {
+    const second = other({description: 'Second.'});
+    Registry.upsertToolRecord(record());
+    Registry.upsertToolRecord(second);
+    expect(Registry.getRegisteredTools().map(t => t.description)).toEqual([
+      'Second.',
+    ]);
+    // A hidden record never outranks a live one, however recent.
+    Registry.upsertToolRecord({
+      ...second,
+      status: 'unavailable',
+      availability: {...second.availability, hidden: true},
+    });
+    expect(Registry.getRegisteredTools().map(t => t.description)).toEqual([
+      'Add an item to the cart.',
+    ]);
+    Registry.removeToolRecord(OWNER_TOKEN);
+    expect(Registry.getRegisteredTools().map(t => t.description)).toEqual([
+      'Second.',
+    ]);
   });
 
   it('installs a DEV-only global handle for developer tooling on first use', () => {
@@ -112,7 +157,7 @@ describe('ReactDOM WebMCP registry', () => {
       // A deleted handle is reinstalled by the next record; a foreign one is
       // replaced without a warning.
       delete globalThis.__REACT_WEBMCP__;
-      Registry.upsertToolRecord(record({key: 'other', qualifiedName: 'other'}));
+      Registry.upsertToolRecord(other({key: 'other', qualifiedName: 'other'}));
       expect(globalThis.__REACT_WEBMCP__.getTools()).toHaveLength(2);
     } else {
       expect(globalThis.__REACT_WEBMCP__).toBeUndefined();
@@ -121,7 +166,7 @@ describe('ReactDOM WebMCP registry', () => {
 
   it('warns once about two tools sharing an agent-facing name', () => {
     Registry.upsertToolRecord(record());
-    Registry.upsertToolRecord(record({key: 'second'}));
+    Registry.upsertToolRecord(other({key: 'second'}));
     assertConsoleErrorDev(
       [
         'WebMCP: Two tools are registered with the name "add_item". ' +
@@ -131,7 +176,7 @@ describe('ReactDOM WebMCP registry', () => {
       {withoutStack: true},
     );
     // Reporting the same problem again is silent.
-    Registry.upsertToolRecord(record({key: 'second', status: 'disabled'}));
+    Registry.upsertToolRecord(other({key: 'second', status: 'disabled'}));
   });
 
   it('flags required schema properties that are not declared', () => {
@@ -177,58 +222,56 @@ describe('ReactDOM WebMCP registry', () => {
       {withoutStack: true},
     );
   });
-  it('removes a record only for the owner that wrote it, when an owner is given', () => {
-    const other = {current: null};
+  it('reports a key held by two owners when the writer asks, once per pair', () => {
+    const collisionMessage =
+      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'distinct keys. Agents cannot tell them apart, and developer tooling ' +
+      'only keeps the most recent one. Give them distinct names, wrap one ' +
+      'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+      'useWebMCPTool call (`id` on <Tool>).';
+    const second = other();
     Registry.upsertToolRecord(record());
-    Registry.removeToolRecord('add_item', other);
-    expect(Registry.getRegisteredTools()).toHaveLength(1);
-    Registry.removeToolRecord('add_item', OWNER_TOKEN);
-    expect(Registry.getRegisteredTools()).toHaveLength(0);
-    // Without an owner the key goes regardless.
-    Registry.upsertToolRecord(record());
-    Registry.removeToolRecord('add_item');
-    expect(Registry.getRegisteredTools()).toHaveLength(0);
+    // Writing never reports on its own: the writer's commit may still be
+    // removing the record of a component it replaced.
+    Registry.upsertToolRecord(second);
+    Registry.checkToolRecordCollisions(second.ownerToken);
+    assertConsoleErrorDev([collisionMessage], {withoutStack: true});
+    // The same pair, from either side, is reported once.
+    Registry.checkToolRecordCollisions(second.ownerToken);
+    Registry.checkToolRecordCollisions(OWNER_TOKEN);
+    // A hidden record (a Suspense fallback) still holds the key.
+    Registry.upsertToolRecord({
+      ...second,
+      status: 'unavailable',
+      availability: {...second.availability, hidden: true},
+    });
+    Registry.checkToolRecordCollisions(OWNER_TOKEN);
+
+    // After one side leaves, a new instance colliding on the same key is a
+    // new problem.
+    Registry.removeToolRecord(second.ownerToken);
+    const third = other();
+    Registry.upsertToolRecord(third);
+    Registry.checkToolRecordCollisions(third.ownerToken);
+    assertConsoleErrorDev([collisionMessage], {withoutStack: true});
+
+    // An owner that no longer holds a record has nothing to check.
+    Registry.removeToolRecord(OWNER_TOKEN);
+    Registry.checkToolRecordCollisions(OWNER_TOKEN);
+    Registry.checkToolRecordCollisions(third.ownerToken);
   });
 
-  it('warns when a live record is overwritten by another owner, not when a hidden one is replaced', () => {
-    const other = {current: null};
+  it('does not report a replacement whose predecessor left before the check', () => {
+    const successor = other();
     Registry.upsertToolRecord(record());
-    Registry.upsertToolRecord(record({ownerToken: other}));
-    assertConsoleErrorDev(
-      [
-        'WebMCP: Two components registered a tool named "add_item" without ' +
-          'distinct keys. Agents cannot tell them apart, and developer tooling ' +
-          'only keeps the most recent one. Give them distinct names, wrap one ' +
-          'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
-          'useWebMCPTool call (`id` on <Tool>).',
-      ],
-      {withoutStack: true},
-    );
-    expect(Registry.getToolRecord('add_item').ownerToken).toBe(other);
-
-    // A record being torn down (hidden) is a replacement, not a collision.
-    Registry.upsertToolRecord(
-      record({
-        key: 'list_items',
-        qualifiedName: 'list_items',
-        name: 'list_items',
-        status: 'unavailable',
-        availability: {
-          enabled: true,
-          scopeAvailable: true,
-          hidden: true,
-          supported: true,
-        },
-      }),
-    );
-    Registry.upsertToolRecord(
-      record({
-        key: 'list_items',
-        qualifiedName: 'list_items',
-        name: 'list_items',
-        ownerToken: other,
-      }),
-    );
-    expect(Registry.getToolRecord('list_items').ownerToken).toBe(other);
+    Registry.upsertToolRecord({
+      ...record(),
+      status: 'unavailable',
+      availability: {...record().availability, hidden: true},
+    });
+    Registry.upsertToolRecord(successor);
+    Registry.removeToolRecord(OWNER_TOKEN);
+    Registry.checkToolRecordCollisions(successor.ownerToken);
+    expect(Registry.getRegisteredTools()).toHaveLength(1);
   });
 });

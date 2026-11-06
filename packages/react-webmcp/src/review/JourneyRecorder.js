@@ -126,24 +126,51 @@ export function fieldLabel(field: Element): string {
   return wrapping == null ? '' : normalize(wrapping.textContent);
 }
 
+// What a field is for, by its name, id, label, placeholder or autocomplete
+// value, when its type does not say.
+const SECRET_HINT =
+  /passw|secret|cvv|cvc|card|security.?code|\botp\b|\bssn\b|\bpin\b/i;
+const SECRET_HINT_ATTRIBUTES = ['name', 'id', 'aria-label', 'placeholder'];
+
 // Secrets never reach a journey file: a password or payment field yields no
 // step, so the developer adds it by hand with a value that can be committed.
-export function isSecretField(element: Element): boolean {
+// A "show password" toggle flips `type` to text before the change event
+// fires, so the recorder also remembers every field it saw as a password
+// (`everSecret`), and the hints above catch unlabeled secret inputs.
+export function isSecretField(
+  element: Element,
+  everSecret?: WeakSet<Element>,
+): boolean {
+  if (everSecret !== undefined && everSecret.has(element)) {
+    return true;
+  }
   const type = element.getAttribute('type');
   if (type != null && type.toLowerCase() === 'password') {
     return true;
   }
   const autocomplete = element.getAttribute('autocomplete');
-  return (
+  if (
     autocomplete != null &&
     /(^|\s)(cc-|one-time-code|current-password|new-password)/i.test(
       autocomplete,
     )
-  );
+  ) {
+    return true;
+  }
+  for (let i = 0; i < SECRET_HINT_ATTRIBUTES.length; i++) {
+    const hint = element.getAttribute(SECRET_HINT_ATTRIBUTES[i]);
+    if (hint != null && SECRET_HINT.test(hint)) {
+      return true;
+    }
+  }
+  return false;
 }
 
-export function describeFill(target: Element): RecordedStep | null {
-  if (!target.matches(FIELD) || isSecretField(target)) {
+export function describeFill(
+  target: Element,
+  everSecret?: WeakSet<Element>,
+): RecordedStep | null {
+  if (!target.matches(FIELD) || isSecretField(target, everSecret)) {
     return null;
   }
   const label = fieldLabel(target);
@@ -172,6 +199,8 @@ export function startJourneyRecording(options: {
   const doc = options.document;
   const steps: Array<RecordedStep> = [];
   const ignore = options.ignore;
+  // Fields that were a password field at any point while recording.
+  const everSecret: WeakSet<Element> = new WeakSet();
 
   function push(step: RecordedStep) {
     const previous = steps[steps.length - 1];
@@ -206,19 +235,32 @@ export function startJourneyRecording(options: {
     if (!(target instanceof Element) || (ignore != null && ignore(target))) {
       return;
     }
-    const step = describeFill(target);
+    const step = describeFill(target, everSecret);
     if (step !== null) {
       push(step);
     }
   }
 
+  // Seen while the field is focused or typed into, before a toggle can
+  // change its type.
+  function onFieldActivity(event: Event) {
+    const target = event.target;
+    if (target instanceof Element && isSecretField(target)) {
+      everSecret.add(target);
+    }
+  }
+
   doc.addEventListener('click', onClick, true);
   doc.addEventListener('change', onChange, true);
+  doc.addEventListener('focusin', onFieldActivity, true);
+  doc.addEventListener('input', onFieldActivity, true);
   return {
     steps: () => steps,
     stop: () => {
       doc.removeEventListener('click', onClick, true);
       doc.removeEventListener('change', onChange, true);
+      doc.removeEventListener('focusin', onFieldActivity, true);
+      doc.removeEventListener('input', onFieldActivity, true);
       return steps.slice();
     },
   };

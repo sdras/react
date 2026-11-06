@@ -30,24 +30,46 @@ const Scheduler = require('scheduler');
 const {act} = require('internal-test-utils');
 const {createFakeModelContext} = require('./utils/createFakeModelContext');
 
-const ReactWebMCP = require('react-webmcp');
+let ReactWebMCP;
+let ReactDOMClient;
 
-jest.resetModules();
-jest.mock('scheduler', () => Scheduler);
-jest.mock('react', () => React);
 // The jest host-config setup forks shared/ReactSharedInternals per module
 // registry; both renderers must see the same dispatcher slot for hooks. The
-// built bundles already share it through the `react` mock above, and the
+// built bundles already share it through the `react` mock below, and the
 // build config cannot resolve this source path.
-if (!process.env.IS_BUILD) {
-  jest.mock(
-    'shared/ReactSharedInternals',
-    () => React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-  );
+function mockSharedInternals() {
+  if (!process.env.IS_BUILD) {
+    jest.mock(
+      'shared/ReactSharedInternals',
+      () =>
+        React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+    );
+  }
 }
-const ReactDOMClient = require('react-dom/client');
+
+// Fresh renderers for every test, so each starts with an empty registry: the
+// tool renderer first, in its own module registry, then an isolated DOM
+// renderer sharing the isomorphic modules.
+function loadRenderers() {
+  jest.resetModules();
+  delete globalThis.__REACT_WEBMCP__;
+  jest.mock('scheduler', () => Scheduler);
+  jest.mock('react', () => React);
+  mockSharedInternals();
+  ReactWebMCP = require('react-webmcp');
+
+  jest.resetModules();
+  jest.mock('scheduler', () => Scheduler);
+  jest.mock('react', () => React);
+  mockSharedInternals();
+  ReactDOMClient = require('react-dom/client');
+}
 
 describe('react-webmcp DevTools integration', () => {
+  beforeEach(() => {
+    loadRenderers();
+  });
+
   afterAll(() => {
     delete global.__REACT_DEVTOOLS_GLOBAL_HOOK__;
   });

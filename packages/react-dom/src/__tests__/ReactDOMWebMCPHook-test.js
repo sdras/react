@@ -264,7 +264,7 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
   });
 
   // @gate enableWebMCP
-  it("prefers the browser's signal when the agent provides one", async () => {
+  it("aborts execute's signal when the browser cancels the call or the tool goes away", async () => {
     let seenSignal = null;
     function App() {
       useWebMCPTool({
@@ -285,7 +285,22 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       {},
       {signal: browserController.signal},
     );
-    expect(seenSignal).toBe(browserController.signal);
+    expect(seenSignal.aborted).toBe(false);
+    browserController.abort();
+    expect(seenSignal.aborted).toBe(true);
+
+    // The tool's own lifetime is never dropped because the browser supplied
+    // a signal: a call in flight stops when its UI goes away.
+    const laterController = new AbortController();
+    await modelContext.executeTool(
+      'slow',
+      {},
+      {signal: laterController.signal},
+    );
+    expect(seenSignal.aborted).toBe(false);
+    await act(() => root.render(null));
+    expect(seenSignal.aborted).toBe(true);
+    expect(laterController.signal.aborted).toBe(false);
   });
 
   // @gate enableWebMCP
@@ -632,6 +647,107 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     await act(() => root.render(<App showFirst={false} showSecond={false} />));
     expect(statuses()).toEqual([]);
     expect(modelContext.names()).toEqual([]);
+  });
+
+  // @gate enableWebMCP
+  it('reports a collision with a component a Suspense boundary is hiding, from the one that caused it', async () => {
+    const never = new Promise(() => {});
+    function Gate({suspend}) {
+      if (suspend) {
+        throw never;
+      }
+      return null;
+    }
+    function Hidden() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'hidden',
+      });
+      return null;
+    }
+    function Newcomer() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'newcomer',
+      });
+      return null;
+    }
+    // An owner of its own, so the stack tells the two components apart.
+    function Late() {
+      return <Newcomer />;
+    }
+    function App({suspend, showNewcomer}) {
+      return (
+        <>
+          <React.Suspense fallback="loading">
+            <Hidden />
+            <Gate suspend={suspend} />
+          </React.Suspense>
+          {showNewcomer ? <Late /> : null}
+        </>
+      );
+    }
+    await act(() => root.render(<App suspend={false} showNewcomer={false} />));
+    await act(() => root.render(<App suspend={true} showNewcomer={false} />));
+    expect(statuses()).toEqual([['add_item', 'unavailable', 'hook']]);
+
+    // The hidden tool still holds the key: a real collision, reported now and
+    // attributed to the component that mounted into it.
+    await act(() => root.render(<App suspend={true} showNewcomer={true} />));
+    assertConsoleErrorDev([
+      'WebMCP: Two components registered a tool named "add_item" without ' +
+        'distinct keys. Agents cannot tell them apart, and developer tooling ' +
+        'only keeps the most recent one. Give them distinct names, wrap one ' +
+        'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+        'useWebMCPTool call (`id` on <Tool>).' +
+        '\n    in Late (at **)' +
+        '\n    in App (at **)',
+    ]);
+    // Tooling shows the live one.
+    expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+  });
+
+  // @gate enableWebMCP
+  it('reports a second collision on the same key after the first is fixed', async () => {
+    function Tool({id}) {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => id,
+      });
+      return null;
+    }
+    const collisionMessage =
+      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'distinct keys. Agents cannot tell them apart, and developer tooling ' +
+      'only keeps the most recent one. Give them distinct names, wrap one ' +
+      'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+      'useWebMCPTool call (`id` on <Tool>).';
+    await act(() =>
+      root.render(
+        <>
+          <Tool key="a" id="a" />
+          <Tool key="b" id="b" />
+        </>,
+      ),
+    );
+    assertConsoleErrorDev([collisionMessage + '\n    in Tool (at **)']);
+    // b leaves; a third component later makes the same mistake with a.
+    await act(() => root.render(<Tool key="a" id="a" />));
+    await act(() =>
+      root.render(
+        <>
+          <Tool key="a" id="a" />
+          <Tool key="c" id="c" />
+        </>,
+      ),
+    );
+    assertConsoleErrorDev([collisionMessage + '\n    in Tool (at **)']);
   });
 
   // @gate enableWebMCP

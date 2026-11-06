@@ -3,7 +3,6 @@
 const {readdirSync, statSync} = require('fs');
 const {join} = require('path');
 const baseConfig = require('./config.base');
-const {experimentalPackages} = require('../../ReactVersions');
 
 process.env.IS_BUILD = true;
 
@@ -64,10 +63,12 @@ module.exports = Object.assign({}, baseConfig, {
     'packages/react-devtools-facade',
     'packages/react-devtools-shared',
     'packages/react-devtools-cdt-mcp',
-    // Packages published only on the experimental channel have no stable
-    // bundle to test against.
+    // react-webmcp is published only on the experimental channel, so there is
+    // no stable bundle to test against. The other experimental-only package,
+    // react-markup, keeps its own `should not be built in stable` guard, so
+    // it is not ignored here.
     ...(process.env.RELEASE_CHANNEL === 'stable'
-      ? experimentalPackages.map(name => `packages/${name}/`)
+      ? ['packages/react-webmcp/']
       : []),
   ],
   // Don't run bundle tests on -test.internal.* files

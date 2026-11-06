@@ -28,8 +28,10 @@ const NOOP_SOURCE = 'react-webmcp/unstable_noop';
 
 // The hook path ships in react-dom. Without the opt-in, named imports of
 // these move to the no-op module too (the rest of the import stays on
-// react-dom), so a tool declared through react-dom registers nothing either.
-// A namespace import or a `require('react-dom')` member access is left alone.
+// react-dom), and member accesses on a default import, a namespace import or
+// a `require('react-dom')` binding are pointed at the no-op module, so a tool
+// declared through react-dom registers nothing either. Only names taken out
+// of `require('react-dom')` by destructuring are left alone.
 const REACT_DOM_SOURCE = 'react-dom';
 const REACT_DOM_WEBMCP_EXPORTS = [
   'unstable_useWebMCPTool',
@@ -51,6 +53,9 @@ type BabelFile = {
 type PluginState = {
   filename?: ?string,
   file: BabelFile,
+  // Per file: the binding of the no-op module added for member accesses, if
+  // one was needed.
+  reactWebMCPNoopBinding?: any,
   ...
 };
 
@@ -188,12 +193,110 @@ export default function ReactWebMCPBabelPlugin(
     return true;
   }
 
+  // Whether `binding` is the whole of react-dom: a default or namespace
+  // import, or a variable holding `require('react-dom')`. Returns how it was
+  // bound, so the replacement can match (an `import` in an ES module, a
+  // `require` elsewhere).
+  function reactDOMBindingKind(binding: any): 'import' | 'require' | null {
+    const bindingPath = binding.path;
+    if (
+      bindingPath.type === 'ImportDefaultSpecifier' ||
+      bindingPath.type === 'ImportNamespaceSpecifier'
+    ) {
+      const declaration = bindingPath.parent;
+      return declaration.source.value === REACT_DOM_SOURCE &&
+        declaration.importKind !== 'type' &&
+        declaration.importKind !== 'typeof'
+        ? 'import'
+        : null;
+    }
+    if (
+      bindingPath.type === 'VariableDeclarator' &&
+      bindingPath.node.id.type === 'Identifier'
+    ) {
+      const init = bindingPath.node.init;
+      return init != null &&
+        init.type === 'CallExpression' &&
+        init.callee.type === 'Identifier' &&
+        init.callee.name === 'require' &&
+        bindingPath.scope.getBinding('require') == null &&
+        init.arguments.length === 1 &&
+        init.arguments[0].type === 'StringLiteral' &&
+        init.arguments[0].value === REACT_DOM_SOURCE
+        ? 'require'
+        : null;
+    }
+    return null;
+  }
+
+  // One binding to the no-op module per file, added at the top of the
+  // program the first time a member access needs it.
+  function noopBindingFor(
+    nodePath: any,
+    state: PluginState,
+    kind: 'import' | 'require',
+  ): any {
+    if (state.reactWebMCPNoopBinding != null) {
+      return state.reactWebMCPNoopBinding;
+    }
+    const program = nodePath.scope.getProgramParent().path;
+    const id = program.scope.generateUidIdentifier('ReactWebMCPNoop');
+    const declaration =
+      kind === 'import'
+        ? t.importDeclaration(
+            [t.importNamespaceSpecifier(id)],
+            t.stringLiteral(NOOP_SOURCE),
+          )
+        : t.variableDeclaration('const', [
+            t.variableDeclarator(
+              id,
+              t.callExpression(t.identifier('require'), [
+                t.stringLiteral(NOOP_SOURCE),
+              ]),
+            ),
+          ]);
+    program.unshiftContainer('body', declaration);
+    state.reactWebMCPNoopBinding = id;
+    return id;
+  }
+
   return {
     name: 'react-webmcp',
     pre() {
       cache = new Map();
     },
     visitor: {
+      // `ReactDOM.unstable_useWebMCPTool(...)` on a binding that holds all of
+      // react-dom becomes the same member of the no-op module.
+      MemberExpression(nodePath: any, state: PluginState) {
+        const node = nodePath.node;
+        const property = node.property;
+        let name;
+        if (!node.computed && property.type === 'Identifier') {
+          name = property.name;
+        } else if (node.computed && property.type === 'StringLiteral') {
+          name = property.value;
+        } else {
+          return;
+        }
+        if (
+          REACT_DOM_WEBMCP_EXPORTS.indexOf(name) === -1 ||
+          node.object.type !== 'Identifier' ||
+          isEnabled(state)
+        ) {
+          return;
+        }
+        const binding = nodePath.scope.getBinding(node.object.name);
+        if (binding == null) {
+          return;
+        }
+        const kind = reactDOMBindingKind(binding);
+        if (kind === null) {
+          return;
+        }
+        const noop = noopBindingFor(nodePath, state, kind);
+        node.object = t.cloneNode(noop);
+      },
       ImportDeclaration(nodePath: any, state: PluginState) {
         const node = nodePath.node;
         if (shouldRewrite(node.source.value)) {

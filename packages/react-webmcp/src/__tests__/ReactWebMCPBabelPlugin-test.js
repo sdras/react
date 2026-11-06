@@ -64,6 +64,26 @@ const REACT_DOM_SOURCE = [
   "import * as ReactDOM from 'react-dom';",
   "export {unstable_getWebMCPTools, flushSync} from 'react-dom';",
   'const tools = ReactDOM.unstable_getWebMCPTools();',
+  'const portal = ReactDOM.createPortal(null, document.body);',
+].join('\n');
+
+const REACT_DOM_MEMBER_SOURCE = [
+  "import ReactDOM from 'react-dom';",
+  'function App() {',
+  "  return ReactDOM.unstable_useWebMCPTool({name: 'x'}).qualifiedName;",
+  '}',
+  "const scope = ReactDOM['unstable_WebMCPScope'];",
+  'const other = {unstable_useWebMCPTool() {}};',
+  'other.unstable_useWebMCPTool();',
+].join('\n');
+
+const REACT_DOM_REQUIRE_SOURCE = [
+  "const ReactDOM = require('react-dom');",
+  'const tools = ReactDOM.unstable_getWebMCPTools();',
+  'function shadowed(require) {',
+  "  const Other = require('react-dom');",
+  '  return Other.unstable_getWebMCPTools();',
+  '}',
 ].join('\n');
 
 let tmp;
@@ -97,14 +117,56 @@ describe('react-webmcp/babel', () => {
     expect(normalize(code)).toBe(
       normalize(
         [
+          // Added once per file, for member accesses on the namespace.
+          "import * as _ReactWebMCPNoop from 'react-webmcp/unstable_noop';",
           "import { createPortal } from 'react-dom';",
           "import { unstable_useWebMCPTool as useWebMCPTool } from 'react-webmcp/unstable_noop';",
           "import { unstable_WebMCPScope } from 'react-webmcp/unstable_noop';",
-          // A namespace import cannot be split; it is documented as such.
           "import * as ReactDOM from 'react-dom';",
           "export { flushSync } from 'react-dom';",
           "export { unstable_getWebMCPTools } from 'react-webmcp/unstable_noop';",
-          'const tools = ReactDOM.unstable_getWebMCPTools();',
+          'const tools = _ReactWebMCPNoop.unstable_getWebMCPTools();',
+          'const portal = ReactDOM.createPortal(null, document.body);',
+        ].join('\n'),
+      ),
+    );
+  });
+
+  it('points member accesses on a default import of react-dom at the no-op module', () => {
+    const code = transform(REACT_DOM_MEMBER_SOURCE, {enabled: false});
+    expect(normalize(code)).toBe(
+      normalize(
+        [
+          "import * as _ReactWebMCPNoop from 'react-webmcp/unstable_noop';",
+          "import ReactDOM from 'react-dom';",
+          'function App() {',
+          "  return _ReactWebMCPNoop.unstable_useWebMCPTool({name: 'x'}).qualifiedName;",
+          '}',
+          "const scope = _ReactWebMCPNoop['unstable_WebMCPScope'];",
+          // Other objects with a member of the same name are not react-dom.
+          'const other = {unstable_useWebMCPTool() {}};',
+          'other.unstable_useWebMCPTool();',
+        ].join('\n'),
+      ),
+    );
+    expect(normalize(transform(REACT_DOM_MEMBER_SOURCE, {enabled: true}))).toBe(
+      normalize(REACT_DOM_MEMBER_SOURCE),
+    );
+  });
+
+  it('points member accesses on a required react-dom at the no-op module', () => {
+    const code = transform(REACT_DOM_REQUIRE_SOURCE, {enabled: false});
+    expect(normalize(code)).toBe(
+      normalize(
+        [
+          "const _ReactWebMCPNoop = require('react-webmcp/unstable_noop');",
+          "const ReactDOM = require('react-dom');",
+          'const tools = _ReactWebMCPNoop.unstable_getWebMCPTools();',
+          // A local `require` binding is not Node's require.
+          'function shadowed(require) {',
+          "  const Other = require('react-dom');",
+          '  return Other.unstable_getWebMCPTools();',
+          '}',
         ].join('\n'),
       ),
     );

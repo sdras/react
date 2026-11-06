@@ -89,12 +89,21 @@ describe('JourneyRecorder', () => {
       <input placeholder="Card number" autocomplete="cc-number" />
       <input placeholder="Code" autocomplete="one-time-code" />
       <input placeholder="Email" autocomplete="email" />
+      <input name="password" autocomplete="off" placeholder="Secret" />
+      <input id="cvv" placeholder="3 digits" />
+      <input aria-label="PIN" />
+      <input placeholder="Shipping address" />
     `);
-    const [password, card, code, email] = document.querySelectorAll('input');
+    const [password, card, code, email, named, cvv, pin, shipping] =
+      document.querySelectorAll('input');
     setValue(password, 'hunter2');
     setValue(card, '4242');
     setValue(code, '123456');
     setValue(email, 'a@b.c');
+    setValue(named, 'hunter2');
+    setValue(cvv, '123');
+    setValue(pin, '0000');
+    setValue(shipping, '1 Main St');
     expect(Recorder.isSecretField(password)).toBe(true);
     expect(Recorder.describeFill(password)).toBe(null);
     expect(Recorder.describeFill(card)).toBe(null);
@@ -103,6 +112,31 @@ describe('JourneyRecorder', () => {
       fill: 'Email',
       value: 'a@b.c',
     });
+    // Unlabeled secrets are caught by their name, id or label.
+    expect(Recorder.describeFill(named)).toBe(null);
+    expect(Recorder.describeFill(cvv)).toBe(null);
+    expect(Recorder.describeFill(pin)).toBe(null);
+    expect(Recorder.describeFill(shipping)).toEqual({
+      fill: 'Shipping address',
+      value: '1 Main St',
+    });
+  });
+
+  it('keeps a password out of the journey after a show-password toggle', () => {
+    html(`
+      <input type="password" placeholder="Passphrase" />
+      <button type="button">Show</button>
+    `);
+    const field = document.querySelector('input');
+    const handle = Recorder.startJourneyRecording({document});
+    field.dispatchEvent(new Event('focusin', {bubbles: true}));
+    setValue(field, 'hunter2');
+    field.dispatchEvent(new Event('input', {bubbles: true}));
+    // The toggle flips the type before the edit is committed.
+    field.setAttribute('type', 'text');
+    field.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(Recorder.isSecretField(field)).toBe(false);
+    expect(handle.stop()).toEqual([]);
   });
 
   it('records clicks and committed edits until stopped, ignoring what it is told to', () => {

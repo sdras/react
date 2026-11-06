@@ -168,9 +168,9 @@ export function validateToolRecord(
   return issues;
 }
 
-// Two live components wrote records under one registry key: the same
-// qualified name without distinct keys. The registry keeps the most recent
-// one, so the other disappears from developer tooling.
+// Two mounted components hold records under one registry key: the same
+// qualified name without distinct keys. Developer tooling shows one of them,
+// so the other disappears from it.
 export function validateKeyCollision(record: ToolRecord): ValidationIssue {
   return {
     level: 'error',
@@ -202,8 +202,21 @@ export function validateExecute(
   };
 }
 
+export function logIssue(issue: ValidationIssue): void {
+  if (__DEV__) {
+    if (issue.level === 'error') {
+      console.error('WebMCP: %s', issue.message);
+    } else {
+      console.warn('WebMCP: %s', issue.message);
+    }
+  }
+}
+
 const reported: Set<string> = new Set();
 
+// Reports each issue once per tool key and rule. Collisions between owners are
+// deduplicated by the registry per pair of owners instead, since the same key
+// can collide again with a different component after the first is fixed.
 export function reportIssues(key: string, issues: Array<ValidationIssue>) {
   if (__DEV__) {
     for (let i = 0; i < issues.length; i++) {
@@ -213,11 +226,7 @@ export function reportIssues(key: string, issues: Array<ValidationIssue>) {
         continue;
       }
       reported.add(dedupeKey);
-      if (issue.level === 'error') {
-        console.error('WebMCP: %s', issue.message);
-      } else {
-        console.warn('WebMCP: %s', issue.message);
-      }
+      logIssue(issue);
     }
   }
 }

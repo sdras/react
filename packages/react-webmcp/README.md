@@ -62,7 +62,7 @@ Options:
 
 | Option | Meaning |
 | --- | --- |
-| `name`, `description`, `inputSchema`, `execute` | The tool as WebMCP sees it. `execute(input, {signal})` receives the browser's signal, or one that aborts when the tool goes away (unmount, or a Suspense boundary hiding the component). |
+| `name`, `description`, `inputSchema`, `execute` | The tool as WebMCP sees it. `execute(input, {signal})` receives a signal that aborts when the browser cancels the call or when the tool goes away (unmount, or a Suspense boundary hiding the component), whichever comes first. |
 | `safety` | `'read'`, `'mutate'` (default) or `'irreversible'`. Maps to the WebMCP `readOnlyHint` / `consequentialHint` annotations. Agents assume a tool mutates state unless told otherwise, and ask the user before running irreversible ones. |
 | `annotations` | Explicit WebMCP hints, merged over the ones derived from `safety`. |
 | `enabled` | Register only while `true`. |
@@ -119,11 +119,11 @@ as the hook (`id` instead of `key`), and its `execute` receives the same
 available>` mirrors `<ToolScope>`.
 
 Why a renderer rather than a hook for this: React keeps a Suspense-hidden tree
-mounted and does not run its effects until it is shown again, so a hook cannot
-react to the fallback. Host instances of a renderer, and a class component's
-`componentWillUnmount`, are told about it directly. Context from the DOM tree
-does not cross into the tool root; pass values as props or closures. Text
-children are not allowed inside `<ToolTree>`.
+mounted and does not run its passive effects until it is shown again, so a
+hook cannot react to the fallback. Host instances of a renderer, and layout
+effects, are told about it directly. Context from the DOM tree does not cross
+into the tool root; pass values as props or closures. Text children are not
+allowed inside `<ToolTree>`.
 
 ## Developer tooling
 
@@ -224,7 +224,9 @@ on, `R` rejects, arrows move, Escape closes. "Record journey" hides the
 overlay and records what you click and type on the page as journey steps for
 `yarn infer-tools trace --journey`; "Stop and save" hands the journey to
 `onRecordJourney` or downloads it. Password and payment fields are never
-recorded; add those steps by hand. Decisions persist in
+recorded (by type, autocomplete, or a name, id, label or placeholder that
+says password, card, CVV, PIN or the like, and a field that was a password
+field at any point while recording stays one); add those steps by hand. Decisions persist in
 `localStorage` under `storageKey` so a reload keeps the reviewer's place;
 pass `storageKey={null}` to keep them in memory. The entry is separate from
 `react-webmcp` so apps that never render it pay nothing for it.
@@ -240,12 +242,15 @@ from`, `require`, dynamic `import()`) to `react-webmcp/unstable_noop`,
 whose exports do nothing: `useWebMCPTool` reports `supported: false`,
 `<ToolScope>` renders its children, `<ToolTree>` and `<ToolReview>` render
 nothing, and the registry is empty. The app compiles and runs unchanged while
-the renderer and the overlay stay out of the bundle. Named imports of the
-hook path from `react-dom` (`unstable_useWebMCPTool`, `unstable_WebMCPScope`,
-`unstable_getWebMCPTools`, `unstable_subscribeToWebMCPTools`) are redirected
-the same way while the rest of the import stays on `react-dom`. A namespace
-import (`import * as ReactDOM`) or a `require('react-dom')` member access is
-not rewritten, so an app that opts out should import those four by name.
+the renderer and the overlay stay out of the bundle. The hook path from
+`react-dom` (`unstable_useWebMCPTool`, `unstable_WebMCPScope`,
+`unstable_getWebMCPTools`, `unstable_subscribeToWebMCPTools`) is redirected
+the same way: named imports move to the no-op module while the rest of the
+import stays on `react-dom`, and member accesses on a default import, a
+namespace import (`import * as ReactDOM`) or a `const ReactDOM =
+require('react-dom')` binding are pointed at it. Only names taken out of
+`require('react-dom')` by destructuring are not rewritten, so an app that
+opts out should not do that.
 
 ```js
 // babel.config.js

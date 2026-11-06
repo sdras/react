@@ -67,9 +67,9 @@ export type ToolRecord = {
   status: ToolStatus,
   availability: ToolAvailability,
   error: string | null,
-  // Hook path: the `useRef` object of the owning component. Tree path: the
-  // host instance. Used by developer tooling to find the owner fiber. Stripped
-  // from the public snapshot.
+  // Registry identity of the writer. Hook path: the `useRef` object of the
+  // owning component. Tree path: the host instance. Used by developer tooling
+  // to find the owner fiber. Stripped from the public snapshot.
   ownerToken: mixed,
 };
 
@@ -133,8 +133,8 @@ export type UseWebMCPToolOptions = {
   name: string,
   description: string,
   inputSchema?: mixed,
-  // Receives the agent's input and {signal}; the signal aborts when the tool
-  // is unregistered.
+  // Receives the agent's input and {signal}; the signal aborts when the
+  // browser cancels the call or when the tool is unregistered.
   execute: ToolExecute,
   // Stable identity in the registry. Defaults to the qualified name.
   key?: string,
@@ -166,12 +166,14 @@ export type UseWebMCPToolResult = {
 // one scope context and one set of helpers with the hook. Short keys follow
 // the convention of the other internals; they are not public API.
 export type WebMCPInternals = {
-  // upsertToolRecord
-  u: (record: ToolRecord) => void,
-  // removeToolRecord; with an owner token only that owner's record goes
-  r: (key: string, ownerToken?: mixed) => void,
-  // getToolRecord
-  g: (key: string) => ToolRecord | void,
+  // upsertToolRecord: writes the owner's record, returns whether it changed
+  u: (record: ToolRecord) => boolean,
+  // removeToolRecord, by owner
+  r: (ownerToken: mixed) => void,
+  // getToolRecord, by owner
+  g: (ownerToken: mixed) => ToolRecord | void,
+  // checkToolRecordCollisions (DEV): report other owners of this owner's key
+  v: (ownerToken: mixed) => void,
   // batchToolRecordUpdates
   b: <T>(fn: () => T) => T,
   // The scope context shared by unstable_WebMCPScope and the tool tree.
@@ -193,6 +195,13 @@ export type WebMCPInternals = {
   e: (error: mixed) => ToolResponse,
   // getModelContext
   m: () => ModelContextLike | null,
-  // safeStringify
+  // safeStringify, for messages
   j: (value: mixed) => string,
+  // contentKey, for comparisons
+  h: (value: mixed) => string,
+  // combineAbortSignals
+  s: (
+    client: AbortSignal | null,
+    lifetime: AbortSignal | null,
+  ) => AbortSignal | null,
 };

@@ -70,9 +70,3 @@ export function getModelContextSnapshot(): boolean {
 export function getModelContextServerSnapshot(): boolean {
   return false;
 }
-
-// Test-only.
-export function resetModelContextStoreForTesting(): void {
-  stopPolling();
-  listeners.clear();
-}

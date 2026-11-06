@@ -14,22 +14,16 @@ const Scheduler = require('scheduler');
 const {act, assertConsoleErrorDev} = require('internal-test-utils');
 const {createFakeModelContext} = require('./utils/createFakeModelContext');
 
-// Load the tool renderer first so it gets its own reconciler instance.
-const ReactWebMCP = require('react-webmcp');
-// The react-dom the tool tree registered itself with. The registry is read
-// through its public API, which is all the built bundles expose.
-const ReactDOM = require('react-dom');
-
-// Isolate the DOM renderer, sharing the isomorphic modules.
-jest.resetModules();
-jest.mock('scheduler', () => Scheduler);
-jest.mock('react', () => React);
-mockSharedInternals();
-const ReactDOMClient = require('react-dom/client');
+let ReactDOM;
+let ReactDOMClient;
+let ToolTree;
+let Tool;
+let Scope;
+let ToolScope;
 
 // The jest host-config setup forks shared/ReactSharedInternals per module
 // registry; both renderers must see the same dispatcher slot for hooks. The
-// built bundles already share it through the `react` mock above, and the
+// built bundles already share it through the `react` mock below, and the
 // build config cannot resolve this source path.
 function mockSharedInternals() {
   if (!process.env.IS_BUILD) {
@@ -41,7 +35,27 @@ function mockSharedInternals() {
   }
 }
 
-const {ToolTree, Tool, Scope, ToolScope} = ReactWebMCP;
+// Fresh renderers for every test, so each starts with an empty registry and
+// no remembered warnings. The tool renderer loads first so it gets its own
+// reconciler instance, together with the react-dom it registers itself with
+// (the registry is read through that react-dom's public API, which is all
+// the built bundles expose). The DOM renderer is then isolated in a second
+// module registry, sharing the isomorphic modules.
+function loadRenderers() {
+  jest.resetModules();
+  delete globalThis.__REACT_WEBMCP__;
+  jest.mock('scheduler', () => Scheduler);
+  jest.mock('react', () => React);
+  mockSharedInternals();
+  ({ToolTree, Tool, Scope, ToolScope} = require('react-webmcp'));
+  ReactDOM = require('react-dom');
+
+  jest.resetModules();
+  jest.mock('scheduler', () => Scheduler);
+  jest.mock('react', () => React);
+  mockSharedInternals();
+  ReactDOMClient = require('react-dom/client');
+}
 
 let container;
 let root;
@@ -56,10 +70,7 @@ function statuses() {
 
 describe('ToolTree', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.mock('scheduler', () => Scheduler);
-    jest.mock('react', () => React);
-    mockSharedInternals();
+    loadRenderers();
 
     modelContext = createFakeModelContext();
     document.modelContext = modelContext;
@@ -583,6 +594,79 @@ describe('ToolTree', () => {
     await act(() => root.render(null));
     expect(modelContext.names()).toEqual([]);
     expect(statuses()).toEqual([]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when two tools in the tree share a key, once the commit settles', async () => {
+    const collisionMessage =
+      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'distinct keys. Agents cannot tell them apart, and developer tooling ' +
+      'only keeps the most recent one. Give them distinct names, wrap one ' +
+      'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
+      'useWebMCPTool call (`id` on <Tool>).';
+    function App({showSecond}) {
+      return (
+        <ToolTree>
+          <Tool
+            name="add_item"
+            description="Add."
+            safety="mutate"
+            execute={() => 1}
+          />
+          {showSecond ? (
+            <Tool
+              name="add_item"
+              description="Add again."
+              safety="mutate"
+              execute={() => 2}
+            />
+          ) : null}
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App showSecond={false} />));
+    await act(() => root.render(<App showSecond={true} />));
+    // Reported from <ToolTree>'s passive effect, after the DOM commit.
+    assertConsoleErrorDev([collisionMessage + '\n    in App (at **)']);
+    expect(statuses()).toEqual([['add_item', 'registered']]);
+  });
+
+  // @gate enableWebMCP
+  it('does not warn when a hook tool is replaced by a tree tool in one commit', async () => {
+    function HookTool() {
+      ReactDOM.unstable_useWebMCPTool({
+        name: 'add_item',
+        description: 'Add.',
+        safety: 'mutate',
+        execute: () => 'hook',
+      });
+      return null;
+    }
+    function App({useTree}) {
+      return useTree ? (
+        <ToolTree>
+          <Tool
+            name="add_item"
+            description="Add."
+            safety="mutate"
+            execute={() => 'tree'}
+          />
+        </ToolTree>
+      ) : (
+        <HookTool />
+      );
+    }
+    await act(() => root.render(<App useTree={false} />));
+    expect(statuses()).toEqual([['add_item', 'registered']]);
+    // The hook's hidden record is still there while the tool root commits
+    // inside this DOM commit; it is gone by the time the check runs.
+    await act(() => root.render(<App useTree={true} />));
+    expect(
+      ReactDOM.unstable_getWebMCPTools().map(t => [t.qualifiedName, t.source]),
+    ).toEqual([['add_item', 'tree']]);
+    expect(await modelContext.executeTool('add_item', {})).toEqual({
+      content: [{type: 'text', text: 'tree'}],
+    });
   });
 
   // @gate enableWebMCP

@@ -73,6 +73,16 @@ describe('react-devtools-facade', () => {
     expect(globalThis.__REACT_LLM_TOOLS__).toBeUndefined();
   });
 
+  // @gate enableWebMCP
+  it('exposes getAgentTools when React is built with enableWebMCP', () => {
+    expect(typeof createTools(facade).getAgentTools).toBe('function');
+  });
+
+  // @gate !enableWebMCP
+  it('omits getAgentTools when React is built without enableWebMCP', () => {
+    expect(createTools(facade).getAgentTools).toBeUndefined();
+  });
+
   it('attaches to an existing hook instead of installing a second one', () => {
     // A facade hook is already installed on globalThis (beforeEach). A second
     // installFacade() attaches to it rather than throwing or replacing it — this

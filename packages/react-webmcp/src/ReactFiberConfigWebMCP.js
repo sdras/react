@@ -88,7 +88,6 @@ export type ToolInstance = {
   // Remembered so a failed registration is not retried on every commit.
   failedSignature: string | null,
   failedMessage: string | null,
-  recordKey: string | null,
   warnedInvalid: boolean,
   fiber: Object,
 };
@@ -132,6 +131,13 @@ export type Container = {
   // react-dom's WebMCP handle, or null with a react-dom that lacks the
   // feature, in which case the tree registers and records nothing.
   internals: WebMCPInternals | null,
+  // True while <ToolTree> renders this root from inside a commit of the DOM
+  // tree. DEV collision checks for records written then wait for that commit
+  // to settle (see flushToolTree).
+  inHostCommit: boolean,
+  // DEV: tools whose records changed inside a host commit, checked for key
+  // collisions by <ToolTree> once the commit's cleanups have run.
+  pendingCollisionChecks: Array<ToolInstance>,
 };
 
 export function createToolContainer(
@@ -148,6 +154,8 @@ export function createToolContainer(
         ? getTarget
         : () => (internals === null ? null : internals.m()),
     internals,
+    inHostCommit: false,
+    pendingCollisionChecks: [],
   };
 }
 
@@ -173,7 +181,9 @@ const SCOPE_VISIBLE_PROPS = ['name', 'available', 'path'];
 
 // Object-valued props (`inputSchema`, `annotations`, the root scope's `path`)
 // are usually written inline, so a new identity on every render is normal;
-// only a different value is a change.
+// only a different value is a change. The comparison key falls back to
+// identity for values JSON cannot represent, so two different circular
+// schemas never read as equal.
 const CONTENT_COMPARED_PROPS = ['inputSchema', 'annotations', 'path'];
 
 function didVisiblePropsChange(
@@ -302,12 +312,10 @@ function createExecute(
         }
         const lifetime = tool.lifetime;
         result = fn(input, {
-          signal:
-            client != null && client.signal != null
-              ? client.signal
-              : lifetime !== null
-                ? lifetime.signal
-                : null,
+          signal: internalsOf(tool.container).s(
+            client != null && client.signal != null ? client.signal : null,
+            lifetime !== null ? lifetime.signal : null,
+          ),
         });
       } catch (error) {
         resolve(handleExecuteError(tool, error));
@@ -350,11 +358,9 @@ function onRegistrationFailed(
   const message = error instanceof Error ? error.message : w.j(error);
   tool.failedSignature = registration.signature;
   tool.failedMessage = message;
-  if (tool.recordKey !== null) {
-    const existing = w.g(tool.recordKey);
-    if (existing !== undefined) {
-      w.u({...existing, status: 'error', error: message});
-    }
+  const existing = w.g(tool);
+  if (existing !== undefined) {
+    w.u({...existing, status: 'error', error: message});
   }
 }
 
@@ -484,10 +490,6 @@ function visitTool(
 
   const recordKey =
     typeof props.id === 'string' && props.id !== '' ? props.id : qualifiedName;
-  if (tool.recordKey !== null && tool.recordKey !== recordKey) {
-    w.r(tool.recordKey, tool);
-  }
-  tool.recordKey = recordKey;
   toUpsert.push({
     key: recordKey,
     qualifiedName,
@@ -562,8 +564,14 @@ function walkChildren(
 // tree. Aborts happen before any new registration so a renamed or moved tool
 // never briefly coexists with its previous self, and tools that left the tree
 // give up their records before the remaining tools write theirs, so a host
-// instance React replaced in this commit (a key change) cannot delete its
-// successor's record.
+// instance React replaced in this commit (a key change) is gone before its
+// successor is checked for collisions.
+//
+// A flush inside a commit of the DOM tree (<ToolTree> rendering this root
+// from its layout effect) can see the hidden record of a hook tool that same
+// commit is unmounting, which its passive cleanup has yet to remove. Checks
+// for records written then are left for <ToolTree> to run after the commit
+// settles; a flush the tool root scheduled on its own checks right away.
 export function flushToolTree(container: Container): void {
   const w = container.internals;
   if (w === null) {
@@ -595,14 +603,22 @@ export function flushToolTree(container: Container): void {
       const tool = removed[i];
       abortRegistration(tool);
       abortLifetime(tool);
-      if (tool.recordKey !== null) {
-        w.r(tool.recordKey, tool);
-        tool.recordKey = null;
-      }
+      w.r(tool);
       container.knownTools.delete(tool);
     }
     for (let i = 0; i < toUpsert.length; i++) {
-      w.u(toUpsert[i]);
+      const record = toUpsert[i];
+      const changed = w.u(record);
+      if (__DEV__) {
+        if (changed) {
+          const tool: ToolInstance = record.ownerToken as any;
+          if (container.inHostCommit) {
+            container.pendingCollisionChecks.push(tool);
+          } else {
+            w.v(tool);
+          }
+        }
+      }
     }
     if (target !== null) {
       for (let i = 0; i < toRegister.length; i++) {
@@ -610,6 +626,25 @@ export function flushToolTree(container: Container): void {
       }
     }
   });
+}
+
+// DEV. Runs the collision checks a host commit deferred, once that commit has
+// settled. Called by <ToolTree> from a passive effect.
+export function flushPendingCollisionChecks(container: Container): void {
+  if (__DEV__) {
+    const w = container.internals;
+    const pending = container.pendingCollisionChecks;
+    if (w === null || pending.length === 0) {
+      return;
+    }
+    container.pendingCollisionChecks = [];
+    for (let i = 0; i < pending.length; i++) {
+      const tool = pending[i];
+      if (container.knownTools.has(tool)) {
+        w.v(tool);
+      }
+    }
+  }
 }
 
 /** Host config */
@@ -661,7 +696,6 @@ export function createInstance(
         lifetime: null,
         failedSignature: null,
         failedMessage: null,
-        recordKey: null,
         warnedInvalid: false,
         fiber: internalInstanceHandle,
       };
@@ -865,7 +899,7 @@ export function commitUpdate(
     instance.tag === 'tool' ? TOOL_VISIBLE_PROPS : SCOPE_VISIBLE_PROPS;
   const w = instance.container.internals;
   if (
-    didVisiblePropsChange(keys, oldProps, newProps, w === null ? null : w.j)
+    didVisiblePropsChange(keys, oldProps, newProps, w === null ? null : w.h)
   ) {
     instance.container.dirty = true;
   }

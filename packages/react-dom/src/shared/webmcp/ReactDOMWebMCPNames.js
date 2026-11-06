@@ -9,13 +9,41 @@
 
 import type {ToolAnnotations} from 'shared/ReactWebMCPTypes';
 
-// Stringify for signatures and messages without ever throwing
-// (JSON.stringify throws on circular references and BigInt).
+// Stringify for messages without ever throwing (JSON.stringify throws on
+// circular references and BigInt).
 export function safeStringify(value: mixed): string {
   try {
     const result = JSON.stringify(value);
     return result === undefined ? '' : result;
   } catch (x) {
+    // eslint-disable-next-line react-internal/safe-string-coercion
+    return String(value);
+  }
+}
+
+// Identity of values JSON cannot represent, so two such values compare equal
+// only when they are the same object.
+const unserializableIds: WeakMap<interface {}, number> = new WeakMap();
+let nextUnserializableId = 1;
+
+// A string that is equal for two values exactly when their JSON forms are.
+// Inline objects (`inputSchema`, `annotations`) get a new identity every
+// render, so comparisons go by content; a value JSON cannot represent (a
+// circular schema, a BigInt) falls back to identity instead of collapsing
+// every such value into one string.
+export function contentKey(value: mixed): string {
+  try {
+    const result = JSON.stringify(value);
+    return result === undefined ? '' : result;
+  } catch (x) {
+    if (typeof value === 'object' && value !== null) {
+      let id = unserializableIds.get(value);
+      if (id === undefined) {
+        id = nextUnserializableId++;
+        unserializableIds.set(value, id);
+      }
+      return '[unserializable#' + id + ']';
+    }
     // eslint-disable-next-line react-internal/safe-string-coercion
     return String(value);
   }
@@ -47,8 +75,8 @@ export function computeSignature(
     '\n' +
     description +
     '\n' +
-    safeStringify(inputSchema) +
+    contentKey(inputSchema) +
     '\n' +
-    safeStringify(annotations)
+    contentKey(annotations)
   );
 }

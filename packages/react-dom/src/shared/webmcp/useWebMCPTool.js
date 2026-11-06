@@ -29,6 +29,7 @@ import {
 } from './ReactDOMWebMCPModelContextStore';
 import {
   computeSignature,
+  contentKey,
   resolveQualifiedName,
   safeStringify,
 } from './ReactDOMWebMCPNames';
@@ -37,10 +38,11 @@ import {
   normalizeToolResult,
 } from './ReactDOMWebMCPNormalize';
 import {
-  getToolRecord,
+  checkToolRecordCollisions,
   removeToolRecord,
   upsertToolRecord,
 } from './ReactDOMWebMCPRegistry';
+import {combineAbortSignals} from './ReactDOMWebMCPSignal';
 import {getToolScopeContext} from './ReactDOMWebMCPToolScope';
 import {reportIssues, validateExecute} from './ReactDOMWebMCPValidation';
 
@@ -59,6 +61,8 @@ type Latest = {
   execute: mixed,
   formatOutput: ?(result: mixed, input: mixed) => mixed,
   onError: ?(error: mixed) => void,
+  // The record for developer tooling, as of the last commit.
+  record: ToolRecord,
 };
 
 type Failure = {
@@ -84,7 +88,7 @@ function runTool(
   qualifiedName: string,
   input: any,
   client: any,
-  fallbackSignal: AbortSignal | null,
+  lifetimeSignal: AbortSignal | null,
 ): Promise<ToolResponse> {
   return new Promise(resolve => {
     const fail = (error: mixed) => {
@@ -110,10 +114,10 @@ function runTool(
     let result;
     try {
       result = execute(input, {
-        signal:
-          client != null && client.signal != null
-            ? client.signal
-            : fallbackSignal,
+        signal: combineAbortSignals(
+          client != null && client.signal != null ? client.signal : null,
+          lifetimeSignal,
+        ),
       });
     } catch (error) {
       fail(error);
@@ -177,7 +181,7 @@ export function useWebMCPTool(
   const recordKey = key != null ? key : qualifiedName;
 
   // Inline annotation objects change identity every render; compare content.
-  const annotationsKey = safeStringify(annotations);
+  const annotationsKey = contentKey(annotations);
   const resolvedAnnotations = useMemo(
     () => resolveAnnotations(resolvedSafety, annotations),
     [resolvedSafety, annotationsKey],
@@ -193,11 +197,6 @@ export function useWebMCPTool(
   // state, so developer tooling can find the owning component by walking the
   // fiber's hook list and comparing identity.
   const ownerToken = useRef(null);
-
-  const latest = useRef<Latest>({execute, formatOutput, onError});
-  useLayoutEffect(() => {
-    latest.current = {execute, formatOutput, onError};
-  });
 
   const [failure, setFailure] = useState<Failure | null>(null);
   const error =
@@ -224,8 +223,6 @@ export function useWebMCPTool(
     status = 'registered';
   }
 
-  // The record for developer tooling, as of this render. The effects below
-  // read it through a ref so a hide can mark it without a re-render.
   const record: ToolRecord = {
     key: recordKey,
     qualifiedName,
@@ -247,12 +244,15 @@ export function useWebMCPTool(
     error: errorMessage,
     ownerToken,
   };
-  // Mirrored into a ref by a layout effect, never during render, so the
-  // effects below only ever see a committed record. A render React discards
-  // (an interrupted transition) must not leak into the registry.
-  const recordRef = useRef<ToolRecord>(record);
+
+  // Everything the effects below read from this render goes through one ref,
+  // mirrored by a layout effect and never during render. The effects then
+  // only ever see a committed record: a render React discards (an interrupted
+  // transition) must not leak into the registry. The handlers are read the
+  // same way when the agent calls the tool.
+  const latest = useRef<Latest>({execute, formatOutput, onError, record});
   useLayoutEffect(() => {
-    recordRef.current = record;
+    latest.current = {execute, formatOutput, onError, record};
   });
 
   // An AbortSignal for `execute` that fires when the tool goes away: unmount,
@@ -310,23 +310,18 @@ export function useWebMCPTool(
       failed(thrown);
       return undefined;
     }
-    upsertToolRecord(recordRef.current);
+    upsertToolRecord(latest.current.record);
     return () => {
       // Aborting the signal is how a WebMCP tool is unregistered. The record
       // stays, marked hidden, until the passive cleanup removes it on a real
       // unmount; after a Suspense hide it is restored by the next create.
       controller.abort();
-      const current = recordRef.current;
-      const existing = getToolRecord(current.key);
-      // Only touch the record while it is still ours; another component may
-      // own this key by now.
-      if (existing !== undefined && existing.ownerToken === ownerToken) {
-        upsertToolRecord({
-          ...current,
-          status: 'unavailable',
-          availability: {...current.availability, hidden: true},
-        });
-      }
+      const current = latest.current.record;
+      upsertToolRecord({
+        ...current,
+        status: 'unavailable',
+        availability: {...current.availability, hidden: true},
+      });
     };
   }, [shouldRegister, signature]);
 
@@ -337,9 +332,14 @@ export function useWebMCPTool(
         reportIssues(recordKey, [issue]);
       }
     }
-    upsertToolRecord(recordRef.current);
+    upsertToolRecord(latest.current.record);
+    if (__DEV__) {
+      // After every cleanup of this commit, so a component this one replaced
+      // is gone by now and anything else holding the key is a real collision.
+      checkToolRecordCollisions(ownerToken);
+    }
     return () => {
-      removeToolRecord(recordKey, ownerToken);
+      removeToolRecord(ownerToken);
     };
     // `signature` stands in for name/description/inputSchema/annotations.
   }, [

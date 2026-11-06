@@ -29,8 +29,13 @@ import {
 } from 'react-reconciler/src/ReactFiberReconciler';
 import {disableLegacyMode} from 'shared/ReactFeatureFlags';
 
-import {createToolContainer} from './ReactFiberConfigWebMCP';
+import {
+  createToolContainer,
+  flushPendingCollisionChecks,
+} from './ReactFiberConfigWebMCP';
 import {getWebMCPInternals} from './ReactWebMCPInternals';
+
+const {useContext, useEffect, useLayoutEffect, useRef} = React;
 
 function defaultOnDefaultTransitionIndicator() {
   // Noop
@@ -80,30 +85,60 @@ export type ToolTreeProps = {
   target?: ?() => ModelContextLike | null,
 };
 
+type ToolRoot = {
+  container: Container,
+  root: any,
+};
+
+// The DOM tree's unstable_WebMCPScope context, shared through react-dom's
+// internals so a <ToolTree> inherits the scope of the components around it.
+// Without an experimental react-dom the tree registers nothing, so any
+// context object will do.
+const webMCPInternals = getWebMCPInternals();
+const ScopeContext =
+  webMCPInternals !== null
+    ? webMCPInternals.c
+    : React.createContext({path: [], available: true});
+
+// Commits the tool root synchronously, so the tool list updates together
+// with the DOM commit that caused it.
+function renderToolRoot(toolRoot: ToolRoot, element: React$Node): void {
+  const container = toolRoot.container;
+  container.inHostCommit = true;
+  try {
+    updateContainerSync(element, toolRoot.root, null);
+    flushSyncWork();
+  } finally {
+    container.inHostCommit = false;
+  }
+}
+
 // Bridges a react-dom subtree into a second React root rendered by the tool
 // tree renderer, following the pattern react-art uses for <Surface>.
 //
-// This is a class on purpose. When a Suspense boundary in the DOM tree hides
-// this subtree, React calls componentWillUnmount (and componentDidMount again
-// when it reappears), which tears down and rebuilds the tool root. That is
-// what unregisters tools whose UI is behind a fallback.
-export class ToolTree extends React.Component<ToolTreeProps> {
-  _container: Container | null;
-  _root: any;
+// The root lives in layout effects on purpose. When a Suspense boundary in
+// the DOM tree hides this subtree, React disconnects its layout effects (and
+// reconnects them when it reappears), which tears down and rebuilds the tool
+// root. That is what unregisters tools whose UI is behind a fallback.
+export function ToolTree(props: ToolTreeProps): React$Node {
+  const {children, target} = props;
+  // Context does not cross renderer roots, so the DOM tree's ToolScope is
+  // carried in as props on an implicit root scope. A change flows through
+  // commitUpdate like any other prop change.
+  const scope = useContext(ScopeContext);
+  const path = scope != null ? scope.path : [];
+  const available = scope != null ? scope.available : true;
 
-  constructor(props: ToolTreeProps) {
-    super(props);
-    this._container = null;
-    this._root = null;
-  }
+  const toolRootRef = useRef<ToolRoot | null>(null);
 
-  componentDidMount(): void {
+  // `target` is read once, when the root is created.
+  const targetRef = useRef(target);
+  useLayoutEffect(() => {
     const container = createToolContainer(
-      this.props.target,
+      targetRef.current,
       getWebMCPInternals(),
     );
-    this._container = container;
-    this._root = createContainer(
+    const root = createContainer(
       container,
       disableLegacyMode ? ConcurrentRoot : LegacyRoot,
       null,
@@ -116,55 +151,41 @@ export class ToolTree extends React.Component<ToolTreeProps> {
       defaultOnDefaultTransitionIndicator,
       null,
     );
-    this._renderToolRoot();
-  }
+    const toolRoot = {container, root};
+    toolRootRef.current = toolRoot;
+    return () => {
+      toolRootRef.current = null;
+      renderToolRoot(toolRoot, null);
+    };
+  }, []);
 
-  componentDidUpdate(): void {
-    this._renderToolRoot();
-  }
-
-  componentWillUnmount(): void {
-    if (this._root !== null) {
-      updateContainerSync(null, this._root, null);
-      flushSyncWork();
-    }
-  }
-
-  _renderToolRoot(): void {
-    if (this._root === null) {
+  useLayoutEffect(() => {
+    const toolRoot = toolRootRef.current;
+    if (toolRoot === null) {
       return;
     }
-    // Context does not cross renderer roots, so the DOM tree's ToolScope is
-    // carried in as props on an implicit root scope. A change flows through
-    // commitUpdate like any other prop change.
-    const scope = this.context as any;
-    const path = scope != null ? scope.path : [];
-    const available = scope != null ? scope.available : true;
     // $FlowFixMe[not-a-component] The tool tree renderer owns this host type.
     const rootElement = React.createElement(
       'scope',
       {path, available},
-      this.props.children,
+      children,
     );
-    // Commit synchronously so the tool list updates together with the DOM
-    // commit that caused it.
-    updateContainerSync(rootElement, this._root, null);
-    flushSyncWork();
-  }
+    renderToolRoot(toolRoot, rootElement);
+  });
 
-  render(): React$Node {
-    return null;
-  }
+  // DEV: key collision checks for records the tool root wrote during this
+  // commit run after it settles, when a component the commit unmounted has
+  // removed its record (see flushToolTree).
+  useEffect(() => {
+    if (__DEV__) {
+      const toolRoot = toolRootRef.current;
+      if (toolRoot !== null) {
+        flushPendingCollisionChecks(toolRoot.container);
+      }
+    }
+  });
+
+  return null;
 }
-
-// The DOM tree's unstable_WebMCPScope context, shared through react-dom's
-// internals so a <ToolTree> inherits the scope of the components around it.
-// Without an experimental react-dom the tree registers nothing, so any
-// context object will do.
-const webMCPInternals = getWebMCPInternals();
-ToolTree.contextType =
-  webMCPInternals !== null
-    ? webMCPInternals.c
-    : React.createContext({path: [], available: true});
 
 injectIntoDevTools();

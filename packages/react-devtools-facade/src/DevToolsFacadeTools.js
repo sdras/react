@@ -26,6 +26,8 @@ import type {
   CommitReport,
 } from './DevToolsFacadeProfilerTools';
 
+import {enableWebMCP} from 'shared/ReactFeatureFlags';
+
 import {createTreeTools} from './DevToolsFacadeTreeTools';
 import {createAgentTools} from './DevToolsFacadeAgentTools';
 import {createProfilerTools} from './DevToolsFacadeProfilerTools';
@@ -87,7 +89,10 @@ export type Tools = {
     traceName: string,
     commitIndex: number,
   ) => CommitReport | ToolError,
-  getAgentTools: () => AgentToolsResult | ToolError,
+  // WebMCP agent tools ship behind React's enableWebMCP flag (the experimental
+  // channel). Like ReactDOM.unstable_useWebMCPTool, this is undefined in a
+  // build without the flag, so integrators can feature-detect it.
+  getAgentTools: (() => AgentToolsResult | ToolError) | void,
 };
 
 /**
@@ -106,11 +111,9 @@ export function createTools(facade: Facade): Tools {
     facade.profilingState,
     tree.getUid,
   );
-  const agent = createAgentTools(
-    facade.fiberRoots,
-    facade.rendererInternals,
-    tree,
-  );
+  const agent = enableWebMCP
+    ? createAgentTools(facade.fiberRoots, facade.rendererInternals, tree)
+    : null;
 
   return {
     getComponentTree: tree.getComponentTree,
@@ -125,6 +128,6 @@ export function createTools(facade: Facade): Tools {
     stopProfiling: profiler.stopProfiling,
     getTraceOverview: profiler.getTraceOverview,
     getCommitReport: profiler.getCommitReport,
-    getAgentTools: agent.getAgentTools,
+    getAgentTools: agent !== null ? agent.getAgentTools : undefined,
   };
 }

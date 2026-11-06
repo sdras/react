@@ -155,7 +155,10 @@ Detailed report for a single commit.
 ### `react_get_agent_tools`
 
 WebMCP agent tools that React components own through
-[`react-webmcp`](../react-webmcp), with grounding evidence.
+[`react-webmcp`](../react-webmcp), with grounding evidence. Only offered when
+React is built with the `enableWebMCP` feature flag (the experimental channel,
+which `yarn build-for-devtools` and this package's own build use by default);
+a `RELEASE_CHANNEL=stable` build has no such tool.
 
 - **Input:** `includeSchema?` (boolean, include each tool's `inputSchema`,
   default `true`).

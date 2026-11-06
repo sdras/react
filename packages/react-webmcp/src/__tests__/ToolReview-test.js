@@ -15,23 +15,13 @@ const {act} = require('internal-test-utils');
 const {createProposal} = require('./utils/createProposal');
 const {createFakeModelContext} = require('./utils/createFakeModelContext');
 
-// Load the review entry (and with it the tool renderer) first so it gets its
-// own reconciler instance.
-const {ToolReview} = require('react-webmcp/unstable_review');
-// The react-dom the overlay reads the registry from; tools registered through
-// its hook are what the overlay lists as exported.
-const ReactDOM = require('react-dom');
-
-// Isolate the DOM renderer, sharing the isomorphic modules.
-jest.resetModules();
-jest.mock('scheduler', () => Scheduler);
-jest.mock('react', () => React);
-mockSharedInternals();
-const ReactDOMClient = require('react-dom/client');
+let ToolReview;
+let ReactDOM;
+let ReactDOMClient;
 
 // The jest host-config setup forks shared/ReactSharedInternals per module
 // registry; both renderers must see the same dispatcher slot for hooks. The
-// built bundles already share it through the `react` mock above, and the
+// built bundles already share it through the `react` mock below, and the
 // build config cannot resolve this source path.
 function mockSharedInternals() {
   if (!process.env.IS_BUILD) {
@@ -41,6 +31,28 @@ function mockSharedInternals() {
         React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
     );
   }
+}
+
+// Fresh renderers for every test, so each starts with an empty registry. The
+// review entry (and with it the tool renderer) loads first so it gets its own
+// reconciler instance, together with the react-dom the overlay reads the
+// registry from: tools registered through its hook are what the overlay
+// lists as exported. The DOM renderer is then isolated in a second module
+// registry, sharing the isomorphic modules.
+function loadRenderers() {
+  jest.resetModules();
+  delete globalThis.__REACT_WEBMCP__;
+  jest.mock('scheduler', () => Scheduler);
+  jest.mock('react', () => React);
+  mockSharedInternals();
+  ({ToolReview} = require('react-webmcp/unstable_review'));
+  ReactDOM = require('react-dom');
+
+  jest.resetModules();
+  jest.mock('scheduler', () => Scheduler);
+  jest.mock('react', () => React);
+  mockSharedInternals();
+  ReactDOMClient = require('react-dom/client');
 }
 
 let container;
@@ -162,10 +174,7 @@ async function press(key, target) {
 
 describe('ToolReview', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.mock('scheduler', () => Scheduler);
-    jest.mock('react', () => React);
-    mockSharedInternals();
+    loadRenderers();
     document.modelContext = createFakeModelContext();
     localStorage.clear();
     storageKey = 'test-' + ++keyCounter;

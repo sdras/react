@@ -7,6 +7,10 @@
 
 'use strict';
 
+const {enableWebMCP} = require('shared/ReactFeatureFlags');
+
+// react_get_agent_tools is only offered when React is built with enableWebMCP
+// (the experimental channel), the flag the WebMCP registry itself sits behind.
 const TOOL_NAMES = [
   'react_get_component_tree',
   'react_get_component_by_uid',
@@ -20,7 +24,7 @@ const TOOL_NAMES = [
   'react_stop_profiling',
   'react_get_trace_overview',
   'react_get_commit_report',
-  'react_get_agent_tools',
+  ...(enableWebMCP ? ['react_get_agent_tools'] : []),
 ];
 
 let register;
@@ -578,6 +582,7 @@ describe('react-devtools-cdt-mcp', () => {
     ).toEqual({error: 'DOM element is not managed by React'});
   });
 
+  // @gate enableWebMCP
   it('react_get_agent_tools reports when the page has no react-webmcp registry', () => {
     delete globalThis.__REACT_WEBMCP__;
     expect(getTool('react_get_agent_tools').execute({})).toEqual({
@@ -586,6 +591,7 @@ describe('react-devtools-cdt-mcp', () => {
     });
   });
 
+  // @gate enableWebMCP
   it('react_get_agent_tools resolves hook-path owners through the registry', () => {
     let ownerRef = null;
     function TodoTools() {
@@ -648,6 +654,7 @@ describe('react-devtools-cdt-mcp', () => {
     }
   });
 
+  // @gate enableWebMCP
   it('react_get_agent_tools resolves tree-path owners to the component that rendered the tool', () => {
     const ReactWebMCP = require('react-webmcp');
     const registrations = [];
@@ -687,6 +694,11 @@ describe('react-devtools-cdt-mcp', () => {
       delete document.modelContext;
       delete globalThis.__REACT_WEBMCP__;
     }
+  });
+
+  // @gate !enableWebMCP
+  it('does not offer react_get_agent_tools without enableWebMCP', () => {
+    expect(getTool('react_get_agent_tools')).toBeUndefined();
   });
 
   it('returns tool errors as a raw payload', () => {

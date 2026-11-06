@@ -8,6 +8,7 @@
  */
 
 import {installFacade, createTools} from 'react-devtools-facade';
+import {enableWebMCP} from 'shared/ReactFeatureFlags';
 
 import type {Facade, Tools} from 'react-devtools-facade';
 
@@ -291,7 +292,14 @@ const TOOL_DEFINITIONS: Array<ToolDefinition> = [
     call: (tools, args) =>
       tools.getCommitReport(args.traceName, args.commitIndex),
   },
-  {
+];
+
+// WebMCP agent tools ship behind React's enableWebMCP flag (the experimental
+// channel), and so does the facade's getAgentTools. The tool is only offered
+// to chrome-devtools-mcp in a build with the flag, so an agent never discovers
+// a tool that can have no registry to read.
+if (enableWebMCP) {
+  TOOL_DEFINITIONS.push({
     name: 'react_get_agent_tools',
     description:
       'WebMCP agent tools that React components own through react-webmcp, ' +
@@ -312,7 +320,15 @@ const TOOL_DEFINITIONS: Array<ToolDefinition> = [
       },
     },
     call: (tools, args) => {
-      const result: any = tools.getAgentTools();
+      const getAgentTools = tools.getAgentTools;
+      if (getAgentTools === undefined) {
+        return {
+          error:
+            'This build of react-devtools-facade was made without the ' +
+            'enableWebMCP flag, so it has no agent tools.',
+        };
+      }
+      const result: any = getAgentTools();
       if (
         args.includeSchema === false &&
         result != null &&
@@ -328,8 +344,8 @@ const TOOL_DEFINITIONS: Array<ToolDefinition> = [
       }
       return result;
     },
-  },
-];
+  });
+}
 
 // A chrome-devtools-mcp third-party tool. `execute` runs in the page and
 // returns the facade tool's result, which chrome-devtools-mcp forwards to the
