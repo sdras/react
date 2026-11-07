@@ -28,3 +28,22 @@ export function getWebMCPInternals(): WebMCPInternals | null {
   }
   return internals.w as WebMCPInternals;
 }
+
+let didWarnMissingReactDOMSupport = false;
+
+// DEV, once per page: the app declared a tool through this package, but the
+// react-dom it runs on has no WebMCP, so nothing will reach the agent.
+export function warnMissingReactDOMSupport(): void {
+  if (__DEV__) {
+    if (didWarnMissingReactDOMSupport) {
+      return;
+    }
+    didWarnMissingReactDOMSupport = true;
+    console.error(
+      'react-webmcp: This build of react-dom does not include WebMCP ' +
+        '(ReactDOM.unstable_useWebMCPTool is undefined), so the tools ' +
+        'declared through react-webmcp will not be registered with the ' +
+        'browser. WebMCP ships in the experimental channel of react-dom.',
+    );
+  }
+}

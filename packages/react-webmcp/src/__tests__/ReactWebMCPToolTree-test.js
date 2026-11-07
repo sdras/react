@@ -20,6 +20,9 @@ let ToolTree;
 let Tool;
 let Scope;
 let ToolScope;
+let useWebMCPTool;
+let unstable_getRegisteredTools;
+let unstable_subscribeToRegisteredTools;
 
 // The jest host-config setup forks shared/ReactSharedInternals per module
 // registry; both renderers must see the same dispatcher slot for hooks. The
@@ -47,7 +50,15 @@ function loadRenderers() {
   jest.mock('scheduler', () => Scheduler);
   jest.mock('react', () => React);
   mockSharedInternals();
-  ({ToolTree, Tool, Scope, ToolScope} = require('react-webmcp'));
+  ({
+    ToolTree,
+    Tool,
+    Scope,
+    ToolScope,
+    useWebMCPTool,
+    unstable_getRegisteredTools,
+    unstable_subscribeToRegisteredTools,
+  } = require('react-webmcp'));
   ReactDOM = require('react-dom');
 
   jest.resetModules();
@@ -824,5 +835,370 @@ describe('ToolTree', () => {
     expect(await modelContext.executeTool('formatted', {q: 'abc'})).toEqual({
       content: [{type: 'text', text: 'formatted:ABC:abc'}],
     });
+  });
+  // A react-dom built without enableWebMCP exports the hook path as
+  // undefined. The package then stands in with no-ops, so an app on such a
+  // build (stable, canary) renders and registers nothing, and DEV says why
+  // once, instead of the first useWebMCPTool call throwing a TypeError.
+  // @gate !enableWebMCP
+  it('registers nothing and warns once when react-dom was built without the flag', async () => {
+    expect(ReactDOM.unstable_useWebMCPTool).toBe(undefined);
+    let result;
+    function HookTool() {
+      result = useWebMCPTool({
+        name: 'add_todo',
+        description: 'Add a todo.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return 'hook';
+    }
+    function App() {
+      return (
+        <ToolScope name="shop">
+          <HookTool />
+          <ToolTree>
+            <Tool
+              name="add_item"
+              description="Add an item."
+              safety="mutate"
+              execute={() => 'ok'}
+            />
+          </ToolTree>
+        </ToolScope>
+      );
+    }
+    await act(() => root.render(<App />));
+    assertConsoleErrorDev([
+      'react-webmcp: This build of react-dom does not include WebMCP ' +
+        '(ReactDOM.unstable_useWebMCPTool is undefined), so the tools ' +
+        'declared through react-webmcp will not be registered with the ' +
+        'browser. WebMCP ships in the experimental channel of react-dom.' +
+        '\n    in App (at **)',
+    ]);
+    expect(container.textContent).toBe('hook');
+    expect(result).toEqual({
+      supported: false,
+      registered: false,
+      error: null,
+      qualifiedName: 'add_todo',
+      available: false,
+    });
+    expect(modelContext.names()).toEqual([]);
+    expect(unstable_getRegisteredTools()).toEqual([]);
+    const unsubscribe = unstable_subscribeToRegisteredTools(() => {});
+    expect(typeof unsubscribe).toBe('function');
+    unsubscribe();
+    // More components do not warn again.
+    await act(() =>
+      root.render(
+        <>
+          <App />
+          <App />
+        </>,
+      ),
+    );
+    expect(modelContext.names()).toEqual([]);
+  });
+
+  // @gate enableWebMCP
+  it('registers a tool whose definition changed after the browser refused it', async () => {
+    modelContext = createFakeModelContext({
+      failOnceFor: 'refused',
+      rejectOnceFor: 'rejected',
+    });
+    document.modelContext = modelContext;
+    function App({description, showOther}) {
+      return (
+        <ToolTree>
+          <Tool
+            name="refused"
+            description={description}
+            safety="read"
+            execute={() => 1}
+          />
+          <Tool
+            name="rejected"
+            description={description}
+            safety="read"
+            execute={() => 1}
+          />
+          {showOther ? (
+            <Tool
+              name="other"
+              description="Other."
+              safety="read"
+              execute={() => 1}
+            />
+          ) : null}
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App description="One." showOther={false} />));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(statuses()).toEqual([
+      ['refused', 'error'],
+      ['rejected', 'error'],
+    ]);
+    expect(modelContext.names()).toEqual([]);
+
+    // Another commit that walks the tree does not retry the same definition.
+    await act(() => root.render(<App description="One." showOther={true} />));
+    expect(modelContext.names()).toEqual(['other']);
+    expect(modelContext.attempts('refused')).toBe(1);
+    expect(modelContext.attempts('rejected')).toBe(1);
+
+    await act(() => root.render(<App description="Two." showOther={true} />));
+    expect(modelContext.attempts('refused')).toBe(2);
+    expect(modelContext.attempts('rejected')).toBe(2);
+    expect(modelContext.names()).toEqual(['other', 'refused', 'rejected']);
+    expect(statuses()).toEqual([
+      ['refused', 'registered'],
+      ['rejected', 'registered'],
+      ['other', 'registered'],
+    ]);
+    expect(modelContext.tools.get('refused').description).toBe('Two.');
+  });
+
+  // @gate enableWebMCP
+  it('turns asynchronous failures in execute and formatOutput into isError results', async () => {
+    const errors = [];
+    function App() {
+      return (
+        <ToolTree>
+          <Tool
+            name="rejects"
+            description="Rejects."
+            safety="read"
+            onError={error => errors.push('rejects:' + error.message)}
+            execute={() => Promise.reject(new Error('network down'))}
+          />
+          <Tool
+            name="format_returns_error"
+            description="Format returns an Error."
+            safety="read"
+            onError={error =>
+              errors.push('format_returns_error:' + error.message)
+            }
+            formatOutput={() => new Error('nothing to show')}
+            execute={() => 'raw'}
+          />
+          <Tool
+            name="format_throws"
+            description="Format throws."
+            safety="read"
+            onError={error => errors.push('format_throws:' + error.message)}
+            formatOutput={() => {
+              throw new Error('cannot format');
+            }}
+            execute={async () => 'raw'}
+          />
+          <Tool
+            name="handler_throws"
+            description="The error handler itself throws."
+            safety="read"
+            onError={() => {
+              throw new Error('handler bug');
+            }}
+            execute={() => {
+              throw new Error('original failure');
+            }}
+          />
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App />));
+    expect(await modelContext.executeTool('rejects', {})).toEqual({
+      content: [{type: 'text', text: 'network down'}],
+      isError: true,
+    });
+    expect(await modelContext.executeTool('format_returns_error', {})).toEqual({
+      content: [{type: 'text', text: 'nothing to show'}],
+      isError: true,
+    });
+    expect(await modelContext.executeTool('format_throws', {})).toEqual({
+      content: [{type: 'text', text: 'cannot format'}],
+      isError: true,
+    });
+    expect(await modelContext.executeTool('handler_throws', {})).toEqual({
+      content: [{type: 'text', text: 'original failure'}],
+      isError: true,
+    });
+    expect(errors).toEqual([
+      'rejects:network down',
+      'format_returns_error:nothing to show',
+      'format_throws:cannot format',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('re-registers the tools inside a Scope under its new name', async () => {
+    function App({scope}) {
+      return (
+        <ToolTree>
+          <Scope name={scope}>
+            <Tool
+              name="add_item"
+              description="Add an item."
+              safety="mutate"
+              execute={() => 'ok'}
+            />
+          </Scope>
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App scope="cart" />));
+    await act(() => root.render(<App scope="basket" />));
+    expect(modelContext.log).toEqual([
+      ['register', 'cart_add_item'],
+      ['abort', 'cart_add_item'],
+      ['register', 'basket_add_item'],
+    ]);
+    expect(statuses()).toEqual([['basket_add_item', 'registered']]);
+    expect(ReactDOM.unstable_getWebMCPTools()[0].scopePath).toEqual(['basket']);
+
+    // A Scope without a name adds nothing to the path.
+    await act(() => root.render(<App scope={undefined} />));
+    expect(modelContext.names()).toEqual(['add_item']);
+    expect(ReactDOM.unstable_getWebMCPTools()[0].scopePath).toEqual([]);
+  });
+
+  // @gate enableWebMCP
+  it('reorders siblings without re-registering and re-registers a tool that moves to another scope', async () => {
+    function App({order, inCart}) {
+      const tools = {
+        x: (
+          <Tool
+            key="x"
+            name="x"
+            description="X."
+            safety="read"
+            execute={() => 'x'}
+          />
+        ),
+        y: (
+          <Tool
+            key="y"
+            name="y"
+            description="Y."
+            safety="read"
+            execute={() => 'y'}
+          />
+        ),
+      };
+      const moved = (
+        <Tool
+          key="moved"
+          name="moved"
+          description="Moved."
+          safety="read"
+          execute={() => 'moved'}
+        />
+      );
+      return (
+        <ToolTree>
+          {order.map(name => tools[name])}
+          <Scope name="cart">{inCart ? moved : null}</Scope>
+          <Scope name="saved">{inCart ? null : moved}</Scope>
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App order={['x', 'y']} inCart={true} />));
+    const initialLog = [
+      ['register', 'x'],
+      ['register', 'y'],
+      ['register', 'cart_moved'],
+    ];
+    expect(modelContext.log).toEqual(initialLog);
+
+    // Order among siblings is not part of what the agent sees.
+    await act(() => root.render(<App order={['y', 'x']} inCart={true} />));
+    expect(modelContext.log).toEqual(initialLog);
+    expect(statuses()).toEqual([
+      ['x', 'registered'],
+      ['y', 'registered'],
+      ['cart_moved', 'registered'],
+    ]);
+
+    // A different parent is a new host instance: the old registration is
+    // aborted before the new one is made, and the old record leaves.
+    await act(() => root.render(<App order={['y', 'x']} inCart={false} />));
+    expect(modelContext.log).toEqual([
+      ...initialLog,
+      ['abort', 'cart_moved'],
+      ['register', 'saved_moved'],
+    ]);
+    expect(statuses()).toEqual([
+      ['x', 'registered'],
+      ['y', 'registered'],
+      ['saved_moved', 'registered'],
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('rejects a Tool with children', async () => {
+    function App() {
+      return (
+        <ToolTree>
+          <Tool
+            name="parent"
+            description="Parent."
+            safety="read"
+            execute={() => 1}>
+            <Scope name="inner" />
+          </Tool>
+        </ToolTree>
+      );
+    }
+    await expect(act(() => root.render(<App />))).rejects.toThrow(
+      'react-webmcp: A <Tool> cannot have children. Nest tools inside a ' +
+        '<Scope> instead.',
+    );
+  });
+
+  // @gate enableWebMCP
+  it('rejects elements other than Tool and Scope', async () => {
+    function App() {
+      return (
+        <ToolTree>
+          <div />
+        </ToolTree>
+      );
+    }
+    await expect(act(() => root.render(<App />))).rejects.toThrow(
+      'react-webmcp does not support the element type "div". A <ToolTree> ' +
+        'can only contain <Tool> and <Scope> elements.',
+    );
+  });
+
+  // @gate enableWebMCP
+  it('reads target once, when the tool root is created', async () => {
+    const first = createFakeModelContext();
+    const second = createFakeModelContext();
+    function App({target, description}) {
+      return (
+        <ToolTree target={target}>
+          <Tool
+            name="read"
+            description={description}
+            safety="read"
+            execute={() => 1}
+          />
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App target={() => first} description="A." />));
+    expect(first.names()).toEqual(['read']);
+    // A new target function with a change that re-registers still goes to
+    // the target the root was created with.
+    await act(() =>
+      root.render(<App target={() => second} description="B." />),
+    );
+    expect(first.registrations()).toEqual(['read', 'read']);
+    expect(first.tools.get('read').description).toBe('B.');
+    expect(second.registrations()).toEqual([]);
+    expect(modelContext.registrations()).toEqual([]);
   });
 });

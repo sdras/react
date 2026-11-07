@@ -701,6 +701,39 @@ describe('react-devtools-cdt-mcp', () => {
     expect(getTool('react_get_agent_tools')).toBeUndefined();
   });
 
+  // @gate enableWebMCP
+  it('react_get_agent_tools serializes a registry that cannot be read', () => {
+    globalThis.__REACT_WEBMCP__ = {
+      version: 1,
+      getTools() {
+        throw new Error('registry exploded');
+      },
+      subscribe: () => () => {},
+    };
+    try {
+      expect(getTool('react_get_agent_tools').execute({})).toEqual({
+        error:
+          'Failed to read the react-webmcp registry. Cause: registry exploded',
+      });
+    } finally {
+      delete globalThis.__REACT_WEBMCP__;
+    }
+  });
+
+  // @gate enableWebMCP
+  it('react_get_agent_tools explains a facade built without the flag', () => {
+    const {buildToolGroup} = require('../DevToolsCdtMcp');
+    const group = buildToolGroup({getAgentTools: undefined});
+    const tool = group.tools.find(
+      item => item.name === 'react_get_agent_tools',
+    );
+    expect(tool.execute({})).toEqual({
+      error:
+        'This build of react-devtools-facade was made without the ' +
+        'enableWebMCP flag, so it has no agent tools.',
+    });
+  });
+
   it('returns tool errors as a raw payload', () => {
     const result = getTool('react_get_component_by_uid').execute({
       uid: 'r9999',
@@ -855,5 +888,53 @@ describe('react-devtools-cdt-mcp', () => {
         },
       ],
     });
+  });
+});
+
+// The agent tool is offered only when React is built with enableWebMCP. The
+// flag comes from shared/ReactFeatureFlags, which this jest project resolves
+// from source, so both values are checked here whatever channel CI built.
+describe('react-devtools-cdt-mcp enableWebMCP gating', () => {
+  const BASE_TOOL_NAMES = TOOL_NAMES.filter(
+    name => name !== 'react_get_agent_tools',
+  );
+
+  function discoverWithFlag(flagValue) {
+    jest.resetModules();
+    delete globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+    delete globalThis.__REACT_WEBMCP__;
+    jest.doMock('shared/ReactFeatureFlags', () => ({
+      ...jest.requireActual('shared/ReactFeatureFlags'),
+      enableWebMCP: flagValue,
+    }));
+    const registration = require('../DevToolsCdtMcp').register();
+    try {
+      return discover();
+    } finally {
+      registration.unregister();
+    }
+  }
+
+  afterEach(() => {
+    jest.dontMock('shared/ReactFeatureFlags');
+    delete globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+  });
+
+  it('does not offer react_get_agent_tools without enableWebMCP', () => {
+    expect(BASE_TOOL_NAMES).toHaveLength(12);
+    const group = discoverWithFlag(false);
+    expect(group.tools.map(tool => tool.name)).toEqual(BASE_TOOL_NAMES);
+  });
+
+  it('offers react_get_agent_tools with enableWebMCP', () => {
+    const group = discoverWithFlag(true);
+    expect(group.tools.map(tool => tool.name)).toEqual([
+      ...BASE_TOOL_NAMES,
+      'react_get_agent_tools',
+    ]);
+    const tool = group.tools.find(
+      item => item.name === 'react_get_agent_tools',
+    );
+    expect(tool.execute({})).toEqual({registryFound: false, tools: []});
   });
 });

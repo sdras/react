@@ -9,19 +9,35 @@
 
 // A stand-in for `document.modelContext` that records registrations, honors
 // the AbortSignal contract for unregistration, and can run tools.
+//
+// Options: `failFor` / `rejectFor` refuse every registration of that name,
+// synchronously or with a rejected promise; `failOnceFor` / `rejectOnceFor`
+// refuse only the first attempt, so a test can see a retry succeed.
+// `attempts(name)` counts registerTool calls per name, refused ones included.
 function createFakeModelContext(options = {}) {
   const tools = new Map();
   const log = [];
   const failFor = options.failFor || null;
   const rejectFor = options.rejectFor || null;
+  const failOnceFor = options.failOnceFor || null;
+  const rejectOnceFor = options.rejectOnceFor || null;
+  const attemptCounts = new Map();
   return {
     tools,
     log,
     registerTool(tool, registerOptions) {
-      if (failFor !== null && tool.name === failFor) {
+      const attempt = (attemptCounts.get(tool.name) || 0) + 1;
+      attemptCounts.set(tool.name, attempt);
+      if (
+        (failFor !== null && tool.name === failFor) ||
+        (failOnceFor !== null && tool.name === failOnceFor && attempt === 1)
+      ) {
         throw new Error('Registration refused for ' + tool.name);
       }
-      if (rejectFor !== null && tool.name === rejectFor) {
+      if (
+        (rejectFor !== null && tool.name === rejectFor) ||
+        (rejectOnceFor !== null && tool.name === rejectOnceFor && attempt === 1)
+      ) {
         return Promise.reject(
           new Error('Async registration refused for ' + tool.name),
         );
@@ -48,6 +64,9 @@ function createFakeModelContext(options = {}) {
     },
     names() {
       return Array.from(tools.keys()).sort();
+    },
+    attempts(name) {
+      return attemptCounts.get(name) || 0;
     },
     registrations() {
       return log.filter(entry => entry[0] === 'register').map(e => e[1]);

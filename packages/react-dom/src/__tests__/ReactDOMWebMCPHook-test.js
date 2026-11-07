@@ -549,17 +549,288 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(rejected.error.message).toBe(
       'Async registration refused for rejected',
     );
+    // Records are listed in the order they were first written: the rejected
+    // tool's registration wrote its record in the layout phase, the refused
+    // one only reached the registry in the passive phase.
     expect(statuses()).toEqual([
-      ['refused', 'error', 'hook'],
       ['rejected', 'error', 'hook'],
+      ['refused', 'error', 'hook'],
     ]);
     expect(modelContext.names()).toEqual([]);
+    expect(modelContext.attempts('refused')).toBe(1);
+    expect(modelContext.attempts('rejected')).toBe(1);
 
     // The same definition is not retried on re-render; a new one is.
     await act(() => root.render(<App description="One." />));
     expect(modelContext.log).toEqual([]);
+    expect(modelContext.attempts('refused')).toBe(1);
+    expect(modelContext.attempts('rejected')).toBe(1);
     await act(() => root.render(<App description="Two." />));
+    expect(modelContext.attempts('refused')).toBe(2);
+    expect(modelContext.attempts('rejected')).toBe(2);
     expect(refused.error.message).toBe('Registration refused for refused');
+    expect(rejected.error.message).toBe(
+      'Async registration refused for rejected',
+    );
+  });
+
+  // @gate enableWebMCP
+  it('registers a tool whose definition changed after the browser refused it', async () => {
+    document.modelContext = modelContext = createFakeModelContext({
+      failOnceFor: 'refused',
+      rejectOnceFor: 'rejected',
+    });
+    let refused;
+    let rejected;
+    function App({description}) {
+      refused = useWebMCPTool({
+        name: 'refused',
+        description,
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      rejected = useWebMCPTool({
+        name: 'rejected',
+        description,
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App description="One." />));
+    expect(refused.error.message).toBe('Registration refused for refused');
+    expect(rejected.error.message).toBe(
+      'Async registration refused for rejected',
+    );
+    expect(modelContext.names()).toEqual([]);
+
+    await act(() => root.render(<App description="Two." />));
+    expect(modelContext.attempts('refused')).toBe(2);
+    expect(modelContext.attempts('rejected')).toBe(2);
+    expect(refused.error).toBe(null);
+    expect(refused.registered).toBe(true);
+    expect(rejected.error).toBe(null);
+    expect(rejected.registered).toBe(true);
+    expect(modelContext.names()).toEqual(['refused', 'rejected']);
+    expect(modelContext.tools.get('refused').description).toBe('Two.');
+    expect(statuses()).toEqual([
+      ['rejected', 'registered', 'hook'],
+      ['refused', 'registered', 'hook'],
+    ]);
+  });
+
+  // The record is rewritten in place when availability changes. Developer
+  // tooling subscribed to the registry must never see a snapshot without the
+  // tool, and the list must keep its order.
+  // @gate enableWebMCP
+  it('keeps a toggled tool in place in the registry and never drops it', async () => {
+    const snapshots = [];
+    const unsubscribe = ReactDOM.unstable_subscribeToWebMCPTools(() => {
+      snapshots.push(
+        ReactDOM.unstable_getWebMCPTools().map(t => [
+          t.qualifiedName,
+          t.status,
+        ]),
+      );
+    });
+    function App({enabled}) {
+      useWebMCPTool({
+        name: 'first',
+        description: 'First.',
+        safety: 'read',
+        enabled,
+        execute: () => 1,
+      });
+      useWebMCPTool({
+        name: 'second',
+        description: 'Second.',
+        safety: 'read',
+        execute: () => 2,
+      });
+      return null;
+    }
+    await act(() => root.render(<App enabled={true} />));
+    expect(statuses()).toEqual([
+      ['first', 'registered', 'hook'],
+      ['second', 'registered', 'hook'],
+    ]);
+    snapshots.length = 0;
+
+    await act(() => root.render(<App enabled={false} />));
+    // One write from the layout cleanup (the registration is gone, the
+    // record is hidden) and one from the passive effect with the new status.
+    expect(snapshots).toEqual([
+      [
+        ['first', 'unavailable'],
+        ['second', 'registered'],
+      ],
+      [
+        ['first', 'disabled'],
+        ['second', 'registered'],
+      ],
+    ]);
+    expect(modelContext.names()).toEqual(['second']);
+    snapshots.length = 0;
+
+    await act(() => root.render(<App enabled={true} />));
+    expect(snapshots).toEqual([
+      [
+        ['first', 'registered'],
+        ['second', 'registered'],
+      ],
+    ]);
+    expect(modelContext.names()).toEqual(['first', 'second']);
+    // Re-registered under the same record, in the same position.
+    expect(modelContext.registrations()).toEqual(['first', 'second', 'first']);
+    unsubscribe();
+  });
+
+  // @gate enableWebMCP
+  it('does not re-register when inline schema and annotation objects are recreated', async () => {
+    function App({count}) {
+      useWebMCPTool({
+        name: 'read_count',
+        description: 'Read the counter.',
+        safety: 'read',
+        inputSchema: {type: 'object', properties: {}},
+        annotations: {idempotentHint: true},
+        execute: () => count,
+      });
+      return null;
+    }
+    await act(() => root.render(<App count={0} />));
+    await act(() => root.render(<App count={1} />));
+    await act(() => root.render(<App count={2} />));
+    expect(modelContext.registrations()).toEqual(['read_count']);
+    expect(modelContext.tools.get('read_count').annotations).toEqual({
+      readOnlyHint: true,
+      idempotentHint: true,
+    });
+    expect(await modelContext.executeTool('read_count', {})).toEqual({
+      content: [{type: 'text', text: '2'}],
+    });
+    // A different schema is a different tool.
+    function Changed() {
+      useWebMCPTool({
+        name: 'read_count',
+        description: 'Read the counter.',
+        safety: 'read',
+        inputSchema: {type: 'object', properties: {verbose: {type: 'boolean'}}},
+        annotations: {idempotentHint: true},
+        execute: () => 3,
+      });
+      return null;
+    }
+    await act(() => root.render(<Changed />));
+    expect(modelContext.registrations()).toEqual(['read_count', 'read_count']);
+  });
+
+  // The function handed to the browser never rejects: every way a call can
+  // fail becomes an isError result.
+  // @gate enableWebMCP
+  it('turns asynchronous failures in execute and formatOutput into isError results', async () => {
+    const errors = [];
+    function App() {
+      useWebMCPTool({
+        name: 'rejects',
+        description: 'Rejects.',
+        safety: 'read',
+        onError: error => errors.push('rejects:' + error.message),
+        execute: () => Promise.reject(new Error('network down')),
+      });
+      useWebMCPTool({
+        name: 'format_returns_error',
+        description: 'Format returns an Error.',
+        safety: 'read',
+        onError: error => errors.push('format_returns_error:' + error.message),
+        formatOutput: () => new Error('nothing to show'),
+        execute: () => 'raw',
+      });
+      useWebMCPTool({
+        name: 'format_throws',
+        description: 'Format throws.',
+        safety: 'read',
+        onError: error => errors.push('format_throws:' + error.message),
+        formatOutput: () => {
+          throw new Error('cannot format');
+        },
+        execute: async () => 'raw',
+      });
+      useWebMCPTool({
+        name: 'handler_throws',
+        description: 'The error handler itself throws.',
+        safety: 'read',
+        onError: () => {
+          throw new Error('handler bug');
+        },
+        execute: () => {
+          throw new Error('original failure');
+        },
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    expect(await modelContext.executeTool('rejects', {})).toEqual({
+      content: [{type: 'text', text: 'network down'}],
+      isError: true,
+    });
+    expect(await modelContext.executeTool('format_returns_error', {})).toEqual({
+      content: [{type: 'text', text: 'nothing to show'}],
+      isError: true,
+    });
+    expect(await modelContext.executeTool('format_throws', {})).toEqual({
+      content: [{type: 'text', text: 'cannot format'}],
+      isError: true,
+    });
+    // A failing onError must not mask the original failure.
+    expect(await modelContext.executeTool('handler_throws', {})).toEqual({
+      content: [{type: 'text', text: 'original failure'}],
+      isError: true,
+    });
+    expect(errors).toEqual([
+      'rejects:network down',
+      'format_returns_error:nothing to show',
+      'format_throws:cannot format',
+    ]);
+  });
+
+  // The server snapshot says unsupported, the client snapshot says supported
+  // once document.modelContext exists. useSyncExternalStore hydrates with the
+  // server value and then re-renders with the client one, so there is no
+  // hydration mismatch and the tool registers right after hydration.
+  // @gate enableWebMCP
+  it('hydrates with the server snapshot and registers after hydration', async () => {
+    let result;
+    function App() {
+      result = useWebMCPTool({
+        name: 'hydrated',
+        description: 'Hydrated.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return result.supported ? 'supported' : 'unsupported';
+    }
+    const hydrationContainer = document.createElement('div');
+    document.body.appendChild(hydrationContainer);
+    hydrationContainer.innerHTML = ReactDOMServer.renderToString(<App />);
+    expect(hydrationContainer.textContent).toBe('unsupported');
+    expect(modelContext.names()).toEqual([]);
+
+    let hydratedRoot;
+    await act(() => {
+      hydratedRoot = ReactDOMClient.hydrateRoot(hydrationContainer, <App />);
+    });
+    expect(hydrationContainer.textContent).toBe('supported');
+    expect(result.supported).toBe(true);
+    expect(result.registered).toBe(true);
+    expect(modelContext.names()).toEqual(['hydrated']);
+    expect(modelContext.registrations()).toEqual(['hydrated']);
+    expect(statuses()).toEqual([['hydrated', 'registered', 'hook']]);
+
+    await act(() => hydratedRoot.unmount());
+    document.body.removeChild(hydrationContainer);
+    expect(modelContext.names()).toEqual([]);
+    expect(statuses()).toEqual([]);
   });
 
   // @gate enableWebMCP

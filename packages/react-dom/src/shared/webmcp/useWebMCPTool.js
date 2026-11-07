@@ -338,9 +338,6 @@ export function useWebMCPTool(
       // is gone by now and anything else holding the key is a real collision.
       checkToolRecordCollisions(ownerToken);
     }
-    return () => {
-      removeToolRecord(ownerToken);
-    };
     // `signature` stands in for name/description/inputSchema/annotations.
   }, [
     recordKey,
@@ -354,6 +351,16 @@ export function useWebMCPTool(
     scopeAvailable,
     supported,
   ]);
+
+  // The record leaves the registry on unmount only. A change above rewrites
+  // it in place, so the tool keeps its position in the list and is never
+  // missing from a snapshot between its old and new record. A Suspense hide
+  // keeps it too: React disconnects layout effects then, not passive ones.
+  useEffect(() => {
+    return () => {
+      removeToolRecord(ownerToken);
+    };
+  }, []);
 
   useDebugValue({
     name: qualifiedName,

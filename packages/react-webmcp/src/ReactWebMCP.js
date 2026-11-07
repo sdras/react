@@ -7,6 +7,13 @@
  * @flow
  */
 
+import type {Node} from 'react';
+import type {
+  PublicToolRecord,
+  UseWebMCPToolOptions,
+  UseWebMCPToolResult,
+} from 'shared/ReactWebMCPTypes';
+
 export type {
   Lifetime,
   PublicToolRecord,
@@ -28,15 +35,45 @@ export type {ToolProps, ScopeProps, ToolTreeProps} from './ReactWebMCPToolTree';
 // and in the monorepo's jest setup the reconciler binds to the host config of
 // the renderer entry point required most recently, which must be this one and
 // not react-dom.
-export {ToolTree, Tool, Scope} from './ReactWebMCPToolTree';
+import {ToolTree, Tool, Scope} from './ReactWebMCPToolTree';
+// See ReactWebMCPInternals.js for why the import is untyped.
+// $FlowFixMe[cannot-resolve-module]
+import * as ReactDOM from 'react-dom';
+import * as Noop from './ReactWebMCPNoop';
+import {warnMissingReactDOMSupport} from './ReactWebMCPInternals';
+
+export {ToolTree, Tool, Scope};
 
 // The hook path lives in react-dom behind enableWebMCP and is re-exported
 // here under its original names, so an app can keep one import for both
-// paths. See ReactWebMCPInternals.js for why the import is untyped.
-export {
-  unstable_useWebMCPTool as useWebMCPTool,
-  unstable_WebMCPScope as ToolScope,
-  unstable_getWebMCPTools as unstable_getRegisteredTools,
-  unstable_subscribeToWebMCPTools as unstable_subscribeToRegisteredTools,
-  // $FlowFixMe[cannot-resolve-module]
-} from 'react-dom';
+// paths. A react-dom without the flag (a stable build) exports them as
+// undefined. The no-op stand-ins take their place then, so a tool declared
+// through this package registers nothing, the same as the tool tree with
+// that react-dom, instead of crashing the component with a TypeError; DEV
+// says so once.
+const hasHookPath: boolean =
+  typeof (ReactDOM as any).unstable_useWebMCPTool === 'function';
+
+export const useWebMCPTool: (
+  options: UseWebMCPToolOptions,
+) => UseWebMCPToolResult = hasHookPath
+  ? (ReactDOM as any).unstable_useWebMCPTool
+  : function useWebMCPTool(options: UseWebMCPToolOptions): UseWebMCPToolResult {
+      warnMissingReactDOMSupport();
+      return Noop.useWebMCPTool(options);
+    };
+
+export const ToolScope: (props: {children?: Node, ...}) => Node = hasHookPath
+  ? (ReactDOM as any).unstable_WebMCPScope
+  : Noop.ToolScope;
+
+export const unstable_getRegisteredTools: () => $ReadOnlyArray<PublicToolRecord> =
+  hasHookPath
+    ? (ReactDOM as any).unstable_getWebMCPTools
+    : Noop.unstable_getRegisteredTools;
+
+export const unstable_subscribeToRegisteredTools: (
+  listener: () => void,
+) => () => void = hasHookPath
+  ? (ReactDOM as any).unstable_subscribeToWebMCPTools
+  : Noop.unstable_subscribeToRegisteredTools;

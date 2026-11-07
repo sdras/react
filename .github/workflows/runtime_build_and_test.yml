@@ -498,6 +498,48 @@ jobs:
       - run: node --version
       - run: yarn test --build --project=devtools -r=experimental --shard=${{ matrix.shard }} --ci
 
+  test_build_devtools_stable:
+    # The WebMCP agent tool in react-devtools-facade and react-devtools-cdt-mcp
+    # sits behind enableWebMCP, which is off on the stable channel. The
+    # experimental run above skips every `@gate !enableWebMCP` test, so the
+    # two suites also run against the stable bundles here.
+    name: yarn test-build (devtools, stable)
+    needs: [build_and_lint, runtime_node_modules_cache]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Ensure clean build directory
+        run: rm -rf build
+      - name: Restore archived build
+        id: download_build
+        uses: actions/download-artifact@v4
+        background: true
+        with:
+          pattern: _build_*
+          path: build
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Restore cached node_modules
+        uses: actions/cache/restore@v4
+        id: node_modules
+        with:
+          path: |
+            **/node_modules
+          key: runtime-node_modules-v10-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          # Don't use restore-keys here. Otherwise the cache grows indefinitely.
+      - run: yarn install --frozen-lockfile
+        if: steps.node_modules.outputs.cache-hit != 'true'
+      - name: Wait for archived build
+        wait: download_build
+      - name: Display structure of build
+        run: ls -R build
+      - run: node --version
+      - run: yarn test --build --project=devtools -r=stable packages/react-devtools-facade packages/react-devtools-cdt-mcp --ci
+
   process_artifacts_combined:
     name: Process artifacts combined
     needs: [build_and_lint, runtime_node_modules_cache, resolve_build_weights]
@@ -979,6 +1021,22 @@ jobs:
           "$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" --version
       - name: Wait for archived build
         wait: download_build
+      # The package's own rollup build reads enableWebMCP from RELEASE_CHANNEL
+      # (see its rollup.config.cjs): a stable dist must not offer
+      # react_get_agent_tools and an experimental one must. The e2e fixture
+      # bundles the package from source, so these builds leave it unchanged.
+      - name: Check react_get_agent_tools is gated in the package build
+        run: |
+          RELEASE_CHANNEL=stable yarn --cwd packages/react-devtools-cdt-mcp build
+          if grep -q react_get_agent_tools packages/react-devtools-cdt-mcp/dist/register.js; then
+            echo "A RELEASE_CHANNEL=stable build must not offer react_get_agent_tools" >&2
+            exit 1
+          fi
+          RELEASE_CHANNEL=experimental yarn --cwd packages/react-devtools-cdt-mcp build
+          if ! grep -q react_get_agent_tools packages/react-devtools-cdt-mcp/dist/register.js; then
+            echo "A RELEASE_CHANNEL=experimental build must offer react_get_agent_tools" >&2
+            exit 1
+          fi
       - name: Run React DevTools CDT MCP e2e tests
         run: yarn --cwd packages/react-devtools-cdt-mcp test:e2e:ci
         env:

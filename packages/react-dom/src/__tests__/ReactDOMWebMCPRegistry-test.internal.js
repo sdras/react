@@ -222,6 +222,66 @@ describe('ReactDOM WebMCP registry', () => {
       {withoutStack: true},
     );
   });
+  it('warns about a scoped name over the budget when the local name is within it', () => {
+    Registry.upsertToolRecord(
+      record({
+        key: 'checkout_shipping_address_add_item',
+        name: 'add_item',
+        qualifiedName: 'checkout_shipping_address_add_item',
+        scopePath: ['checkout', 'shipping', 'address'],
+      }),
+    );
+    assertConsoleWarnDev(
+      [
+        'WebMCP: The scoped tool name "checkout_shipping_address_add_item" is longer than 30 characters. Use shorter <ToolScope name> prefixes.',
+      ],
+      {withoutStack: true},
+    );
+    // A local name over the budget is reported as such, not twice.
+    Registry.upsertToolRecord(
+      other({
+        key: 'checkout_a_very_long_tool_name_that_goes_past_thirty',
+        name: 'a_very_long_tool_name_that_goes_past_thirty',
+        qualifiedName: 'checkout_a_very_long_tool_name_that_goes_past_thirty',
+        scopePath: ['checkout'],
+      }),
+    );
+    assertConsoleWarnDev(
+      [
+        'WebMCP: The tool name "checkout_a_very_long_tool_name_that_goes_past_thirty" is longer than 30 characters. Prefer short, action-oriented names like "add_item".',
+      ],
+      {withoutStack: true},
+    );
+  });
+
+  it('reports a missing description as an error', () => {
+    Registry.upsertToolRecord(record({description: ''}));
+    assertConsoleErrorDev(
+      [
+        'WebMCP: The tool "add_item" has no description. Agents pick tools by their descriptions; say what the tool does and when to use it.',
+      ],
+      {withoutStack: true},
+    );
+  });
+
+  it('flags required properties when the schema declares none at all', () => {
+    Registry.upsertToolRecord(
+      record({inputSchema: {type: 'object', required: ['sku', 'quantity']}}),
+    );
+    // Issues are reported once per tool and rule, so the second undeclared
+    // property is folded into the first report.
+    assertConsoleErrorDev(
+      [
+        'WebMCP: The inputSchema of "add_item" marks "sku" as required but does not declare it in `properties`.',
+      ],
+      {withoutStack: true},
+    );
+    // A schema that is not an object is not inspected.
+    Registry.upsertToolRecord(
+      other({key: 'untyped', qualifiedName: 'untyped', inputSchema: 'any'}),
+    );
+  });
+
   it('reports a key held by two owners when the writer asks, once per pair', () => {
     const collisionMessage =
       'WebMCP: Two components registered a tool named "add_item" without ' +

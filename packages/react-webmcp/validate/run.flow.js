@@ -1494,6 +1494,11 @@ async function main(argv: Array<string>): Promise<number> {
 module.exports = {
   DEFAULT_FIXTURE_DIR,
   callTool,
+  checkBudgets,
+  checkDrift,
+  checkRegistrationCrossCheck,
+  checkRegistry,
+  checkStatic,
   collect,
   createError,
   evaluate,
@@ -1504,5 +1509,7 @@ module.exports = {
   parseArgs,
   projectForManifest,
   readRegisteredNames,
+  report,
   resolveSourceFile,
+  simpleDiff,
 };

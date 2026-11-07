@@ -127,10 +127,31 @@ export function fieldLabel(field: Element): string {
 }
 
 // What a field is for, by its name, id, label, placeholder or autocomplete
-// value, when its type does not say.
+// value, when its type does not say. The hint is split into lowercase words
+// first (camelCase, underscores and hyphens all become spaces) and matched by
+// whole words, so "cardNumber", "credit card", "pin_code" and a bare "Card"
+// are payment or credential fields while "discard_reason", "Postcard
+// message" and "cardTitle" are not. A miss here records a secret into a
+// journey file and a false positive silently drops a step, so the words
+// below are the ones payment and credential forms use for their fields.
 const SECRET_HINT =
-  /passw|secret|cvv|cvc|card|security.?code|\botp\b|\bssn\b|\bpin\b/i;
+  /passw|passphrase|secret|cvv|cvc|security ?code|^card$|\b(?:credit|debit|payment|gift) ?card\b|\bcard ?(?:number|num|no|holder|code|cvv|cvc|exp|expiry|expiration|pan)\b|\bon card\b|\bcc ?(?:num|number|no|exp|expiry|cvv|cvc)\b|\botp\b|\bssn\b|\bpin\b/;
 const SECRET_HINT_ATTRIBUTES = ['name', 'id', 'aria-label', 'placeholder'];
+
+function secretHintWords(hint: string): string {
+  return hint
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
+}
+
+// Exported for tests: whether a name, id, label or placeholder reads as a
+// password or payment field.
+export function isSecretHint(hint: string): boolean {
+  return SECRET_HINT.test(secretHintWords(hint));
+}
 
 // Secrets never reach a journey file: a password or payment field yields no
 // step, so the developer adds it by hand with a value that can be committed.
@@ -159,7 +180,7 @@ export function isSecretField(
   }
   for (let i = 0; i < SECRET_HINT_ATTRIBUTES.length; i++) {
     const hint = element.getAttribute(SECRET_HINT_ATTRIBUTES[i]);
-    if (hint != null && SECRET_HINT.test(hint)) {
+    if (hint != null && isSecretHint(hint)) {
       return true;
     }
   }

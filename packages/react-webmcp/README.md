@@ -26,7 +26,10 @@ across renders without re-registering, normalizes results into MCP responses,
 and records the tool in a registry for developer tooling. The API grew out of
 [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool), with
 scoped names, `safety` and Suspense awareness on top. This package re-exports
-it as `useWebMCPTool` and `ToolScope`, so one import covers both paths.
+it as `useWebMCPTool` and `ToolScope`, so one import covers both paths. On a
+`react-dom` without the flag those re-exports fall back to the no-ops from
+`react-webmcp/unstable_noop` (nothing registers, `supported` is `false`) and
+development builds warn once.
 
 ```js
 import {
@@ -89,7 +92,7 @@ A second React root, rendered by this package's own renderer, that turns
 It writes to the same registry as the hook, through react-dom's internals, so
 a page has one list of tools whichever way they were declared. It needs the
 experimental `react-dom` the hook ships in; with any other build it registers
-nothing.
+nothing and development builds warn once.
 
 ```js
 import {ToolTree, Scope, Tool} from 'react-webmcp';

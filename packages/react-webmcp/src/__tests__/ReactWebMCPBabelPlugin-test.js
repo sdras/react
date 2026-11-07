@@ -38,6 +38,7 @@ function transform(code, options, filename) {
     babelrc: false,
     configFile: false,
     filename: filename || '/project/src/App.js',
+    parserOpts: {plugins: ['flow']},
     plugins: [options === undefined ? plugin : [plugin, options]],
   }).code;
 }
@@ -170,6 +171,56 @@ describe('react-webmcp/babel', () => {
         ].join('\n'),
       ),
     );
+  });
+
+  it('leaves type-only imports and re-exports where they are', () => {
+    // Types are erased by the Flow or TypeScript transform, and the no-op
+    // module exports none, so a type import must keep pointing at the real
+    // package even when the app has not opted in.
+    const code = transform(
+      [
+        "import type {ToolProps} from 'react-webmcp';",
+        "import typeof {ToolTree as ToolTreeType} from 'react-webmcp';",
+        "export type {ToolTreeProps} from 'react-webmcp';",
+        "import type {UseWebMCPToolOptions} from 'react-dom';",
+        "import {type Safety, useWebMCPTool} from 'react-webmcp';",
+        "import {type ToolAnnotations, unstable_useWebMCPTool, createPortal} from 'react-dom';",
+      ].join('\n'),
+      {enabled: false},
+    );
+    expect(sources(code)).toEqual([
+      'react-webmcp',
+      'react-webmcp',
+      'react-webmcp',
+      'react-dom',
+      // A value import with inline type specifiers is still a value import.
+      'react-webmcp/unstable_noop',
+      'react-dom',
+      'react-webmcp/unstable_noop',
+    ]);
+    expect(normalize(code)).toContain(
+      normalize(
+        "import { type ToolAnnotations, createPortal } from 'react-dom';",
+      ),
+    );
+    expect(normalize(code)).toContain(
+      normalize(
+        "import { unstable_useWebMCPTool } from 'react-webmcp/unstable_noop';",
+      ),
+    );
+  });
+
+  it('cannot split a star re-export of react-dom and leaves it alone', () => {
+    // The four WebMCP names cannot be taken out of `export *`; a module
+    // importing them through it gets what react-dom exports, which is
+    // undefined on a build without the flag.
+    const source = "export * from 'react-dom';";
+    expect(normalize(transform(source, {enabled: false}))).toBe(
+      normalize(source),
+    );
+    expect(
+      sources(transform("export * from 'react-webmcp';", {enabled: false})),
+    ).toEqual(['react-webmcp/unstable_noop']);
   });
 
   it('leaves react-dom imports alone when enabled', () => {

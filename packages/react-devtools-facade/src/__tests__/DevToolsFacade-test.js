@@ -83,6 +83,386 @@ describe('react-devtools-facade', () => {
     expect(createTools(facade).getAgentTools).toBeUndefined();
   });
 
+  // react-dom's WebMCP registry and getAgentTools sit behind enableWebMCP.
+  // The flag is read from shared/ReactFeatureFlags, which this jest project
+  // resolves from source, so both values are checked in one run rather than
+  // only on the channel CI happens to build with.
+  describe('enableWebMCP gating', () => {
+    function toolsWithFlag(enableWebMCP) {
+      jest.resetModules();
+      delete globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      jest.doMock('shared/ReactFeatureFlags', () => ({
+        ...jest.requireActual('shared/ReactFeatureFlags'),
+        enableWebMCP,
+      }));
+      const api = require('../../index');
+      return api.createTools(api.installFacade());
+    }
+
+    afterEach(() => {
+      jest.dontMock('shared/ReactFeatureFlags');
+    });
+
+    it('omits getAgentTools when React is built without enableWebMCP', () => {
+      expect(toolsWithFlag(false).getAgentTools).toBeUndefined();
+    });
+
+    it('exposes getAgentTools when React is built with enableWebMCP', () => {
+      const tools = toolsWithFlag(true);
+      expect(typeof tools.getAgentTools).toBe('function');
+      delete globalThis.__REACT_WEBMCP__;
+      expect(tools.getAgentTools()).toEqual({registryFound: false, tools: []});
+    });
+  });
+
+  // The building blocks behind getAgentTools, driven by a fake registry on
+  // an explicit target, so they depend neither on the enableWebMCP flag nor
+  // on react-dom installing the real registry global.
+  describe('createAgentTools', () => {
+    let createAgentTools;
+    let createTreeTools;
+    let treeTools;
+
+    beforeEach(() => {
+      ({createAgentTools} = require('../DevToolsFacadeAgentTools'));
+      ({createTreeTools} = require('../DevToolsFacadeTreeTools'));
+      treeTools = createTreeTools(facade.fiberRoots, facade.rendererInternals);
+    });
+
+    function agentToolsFor(registry) {
+      const target = registry === undefined ? {} : {__REACT_WEBMCP__: registry};
+      return createAgentTools(
+        facade.fiberRoots,
+        facade.rendererInternals,
+        treeTools,
+        target,
+      );
+    }
+
+    function registryOf(...records) {
+      return {
+        version: 1,
+        getTools: () => records,
+        subscribe: () => () => {},
+      };
+    }
+
+    function record(overrides) {
+      return {
+        key: 'todos_add_todo',
+        qualifiedName: 'todos_add_todo',
+        name: 'add_todo',
+        scopePath: ['todos'],
+        description: 'Add a todo item.',
+        inputSchema: {type: 'object', properties: {text: {type: 'string'}}},
+        annotations: {},
+        safety: 'mutate',
+        lifetime: 'view',
+        source: 'hook',
+        status: 'registered',
+        availability: {
+          enabled: true,
+          scopeAvailable: true,
+          hidden: false,
+          supported: true,
+        },
+        error: null,
+        ownerToken: null,
+        ...overrides,
+      };
+    }
+
+    function resolve(...records) {
+      return agentToolsFor(registryOf(...records)).getAgentTools().tools;
+    }
+
+    it('reports no registry when the page does not expose one', () => {
+      expect(agentToolsFor(undefined).getAgentTools()).toEqual({
+        registryFound: false,
+        tools: [],
+      });
+      // A global without getTools is not a registry either.
+      expect(agentToolsFor({version: 1}).getAgentTools()).toEqual({
+        registryFound: false,
+        tools: [],
+      });
+    });
+
+    it('returns a tool error, with the cause, when the registry cannot be read', () => {
+      const thrown = new Error('registry exploded');
+      const result = agentToolsFor({
+        getTools() {
+          throw thrown;
+        },
+      }).getAgentTools();
+      expect(result.error).toBeInstanceOf(Error);
+      expect(result.error.message).toBe(
+        'Failed to read the react-webmcp registry.',
+      );
+      expect(result.error.cause).toBe(thrown);
+    });
+
+    it('treats a registry that returns something other than an array as empty', () => {
+      expect(agentToolsFor({getTools: () => null}).getAgentTools()).toEqual({
+        registryFound: true,
+        tools: [],
+      });
+    });
+
+    it('resolves a hook tool to the function component whose ref is its owner token', () => {
+      let token = null;
+      function TodoTools() {
+        token = React.useRef(null);
+        return null;
+      }
+      function App() {
+        return <TodoTools />;
+      }
+      act(() => {
+        ReactDOMClient.createRoot(container).render(<App />);
+      });
+
+      const [tool] = resolve(record({ownerToken: token}));
+      expect(tool.owner).toEqual({
+        uid: expect.any(String),
+        name: 'TodoTools',
+        type: 'function',
+      });
+      expect(tool.unresolvedReason).toBeUndefined();
+      expect('ownerToken' in tool).toBe(false);
+      // jsdom carries no source positions; see the getComponentSource tests.
+      expect(tool.ownerSource).toBe(null);
+      // The uid is the one the tree tools use.
+      expect(treeTools.getComponentByUid(tool.owner.uid).name).toBe(
+        'TodoTools',
+      );
+    });
+
+    it('resolves hook tools owned by memo and forwardRef components, sorted by name', () => {
+      let memoToken = null;
+      let forwardToken = null;
+      const Memoized = React.memo(function Memoized() {
+        memoToken = React.useRef(null);
+        return null;
+      });
+      const Forwarded = React.forwardRef(function Forwarded(props, ref) {
+        forwardToken = React.useRef(null);
+        return null;
+      });
+      act(() => {
+        ReactDOMClient.createRoot(container).render(
+          <>
+            <Memoized />
+            <Forwarded />
+          </>,
+        );
+      });
+
+      const tools = resolve(
+        record({
+          key: 'b',
+          qualifiedName: 'b_forward',
+          ownerToken: forwardToken,
+        }),
+        record({key: 'a', qualifiedName: 'a_memo', ownerToken: memoToken}),
+      );
+      expect(
+        tools.map(tool => [
+          tool.qualifiedName,
+          tool.owner.name,
+          tool.owner.type,
+        ]),
+      ).toEqual([
+        ['a_memo', 'Memo(Memoized)', 'memo'],
+        ['b_forward', 'ForwardRef(Forwarded)', 'forwardRef'],
+      ]);
+    });
+
+    it('reports a hook tool whose owner is not mounted, including one that unmounted', () => {
+      let token = null;
+      function TodoTools() {
+        token = React.useRef(null);
+        return null;
+      }
+      const root = ReactDOMClient.createRoot(container);
+      act(() => {
+        root.render(<TodoTools />);
+      });
+      expect(resolve(record({ownerToken: token}))[0].owner).not.toBe(null);
+
+      // A record whose hook cleanup has yet to run points at a fiber that is
+      // gone, and so does a token no component ever held.
+      act(() => {
+        root.unmount();
+      });
+      const [stale, never] = resolve(
+        record({key: 'a', qualifiedName: 'a', ownerToken: token}),
+        record({key: 'b', qualifiedName: 'b', ownerToken: {current: null}}),
+      );
+      expect(stale.owner).toBe(null);
+      expect(stale.unresolvedReason).toBe(
+        'The owning component is not mounted.',
+      );
+      expect(never.owner).toBe(null);
+      expect(never.unresolvedReason).toBe(
+        'The owning component is not mounted.',
+      );
+    });
+
+    it('only matches refs in the hook list of a function-like component', () => {
+      // A class component's memoizedState is its state, shaped here like a
+      // hook list so that only the function-like check keeps it out.
+      const token = {current: null};
+      class Holder extends React.Component {
+        state = {memoizedState: token, next: null};
+        render() {
+          return null;
+        }
+      }
+      act(() => {
+        ReactDOMClient.createRoot(container).render(<Holder />);
+      });
+      const [tool] = resolve(record({ownerToken: token}));
+      expect(tool.owner).toBe(null);
+      expect(tool.unresolvedReason).toBe(
+        'The owning component is not mounted.',
+      );
+    });
+
+    it('reports a tree tool whose host instance is not mounted', () => {
+      const [tool] = resolve(
+        record({source: 'tree', ownerToken: {tag: 'tool'}}),
+      );
+      expect(tool.source).toBe('tree');
+      expect(tool.owner).toBe(null);
+      expect(tool.unresolvedReason).toBe(
+        'The tool host instance is not mounted.',
+      );
+    });
+
+    it('cannot name a tree owner while every owner lives in the same renderer', () => {
+      // A tree tool's token is a host instance of react-webmcp's own
+      // renderer, and the owner chain is followed until it leaves that
+      // renderer's roots. With a single renderer, as here (the token is a DOM
+      // node, the stateNode of a react-dom host fiber), the chain runs out
+      // inside it, which is also what a production build without owner
+      // information looks like. The cross-renderer case is covered by the
+      // react-devtools-cdt-mcp tests, which mount a real <ToolTree>.
+      function Cart() {
+        return <span>cart</span>;
+      }
+      function App() {
+        return <Cart />;
+      }
+      act(() => {
+        ReactDOMClient.createRoot(container).render(<App />);
+      });
+      const [tool] = resolve(
+        record({source: 'tree', ownerToken: container.querySelector('span')}),
+      );
+      expect(tool.owner).toBe(null);
+      expect(tool.unresolvedReason).toBe(
+        'No owner information is available (production build?).',
+      );
+    });
+
+    it('reports a record without an owner token', () => {
+      const [withNull, withUndefined] = resolve(
+        record({key: 'a', qualifiedName: 'a', ownerToken: null}),
+        record({key: 'b', qualifiedName: 'b', ownerToken: undefined}),
+      );
+      expect(withNull.owner).toBe(null);
+      expect(withNull.unresolvedReason).toBe(
+        'The tool record has no owner token.',
+      );
+      expect(withUndefined.unresolvedReason).toBe(
+        'The tool record has no owner token.',
+      );
+    });
+
+    it('fills in defaults for a sparse record and passes a full one through', () => {
+      const [full, sparse] = resolve(
+        record({
+          key: 7,
+          qualifiedName: 'zeta',
+          name: 'zeta',
+          scopePath: 'not an array',
+          inputSchema: {x: 1},
+          annotations: null,
+          safety: undefined,
+          lifetime: undefined,
+          source: 'something else',
+          availability: null,
+          error: undefined,
+        }),
+        record({
+          key: 'alpha',
+          qualifiedName: 'alpha',
+          name: 'alpha',
+          scopePath: ['a'],
+          annotations: {readOnlyHint: true},
+          safety: 'read',
+          lifetime: 'session',
+          source: 'tree',
+          status: 'error',
+          availability: {
+            enabled: false,
+            scopeAvailable: true,
+            hidden: true,
+            supported: true,
+          },
+          error: 'Registration refused for alpha',
+        }),
+      );
+      expect(sparse).toEqual({
+        key: '7',
+        qualifiedName: 'zeta',
+        name: 'zeta',
+        scopePath: [],
+        description: 'Add a todo item.',
+        inputSchema: {x: 1},
+        annotations: {},
+        safety: null,
+        lifetime: 'view',
+        source: 'hook',
+        status: 'registered',
+        availability: {
+          enabled: true,
+          scopeAvailable: true,
+          hidden: false,
+          supported: true,
+        },
+        error: null,
+        owner: null,
+        ownerSource: null,
+        unresolvedReason: 'The tool record has no owner token.',
+      });
+      expect(full).toEqual({
+        key: 'alpha',
+        qualifiedName: 'alpha',
+        name: 'alpha',
+        scopePath: ['a'],
+        description: 'Add a todo item.',
+        inputSchema: {type: 'object', properties: {text: {type: 'string'}}},
+        annotations: {readOnlyHint: true},
+        safety: 'read',
+        lifetime: 'session',
+        source: 'tree',
+        status: 'error',
+        availability: {
+          enabled: false,
+          scopeAvailable: true,
+          hidden: true,
+          supported: true,
+        },
+        error: 'Registration refused for alpha',
+        owner: null,
+        ownerSource: null,
+        unresolvedReason: 'The tool record has no owner token.',
+      });
+    });
+  });
+
   it('attaches to an existing hook instead of installing a second one', () => {
     // A facade hook is already installed on globalThis (beforeEach). A second
     // installFacade() attaches to it rather than throwing or replacing it — this

@@ -33,7 +33,10 @@ import {
   createToolContainer,
   flushPendingCollisionChecks,
 } from './ReactFiberConfigWebMCP';
-import {getWebMCPInternals} from './ReactWebMCPInternals';
+import {
+  getWebMCPInternals,
+  warnMissingReactDOMSupport,
+} from './ReactWebMCPInternals';
 
 const {useContext, useEffect, useLayoutEffect, useRef} = React;
 
@@ -134,10 +137,11 @@ export function ToolTree(props: ToolTreeProps): React$Node {
   // `target` is read once, when the root is created.
   const targetRef = useRef(target);
   useLayoutEffect(() => {
-    const container = createToolContainer(
-      targetRef.current,
-      getWebMCPInternals(),
-    );
+    const internals = getWebMCPInternals();
+    if (internals === null) {
+      warnMissingReactDOMSupport();
+    }
+    const container = createToolContainer(targetRef.current, internals);
     const root = createContainer(
       container,
       disableLegacyMode ? ConcurrentRoot : LegacyRoot,

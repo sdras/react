@@ -59,6 +59,65 @@ describe('ReviewModel', () => {
     expect(proposal.name).toBe('add_item');
   });
 
+  it('merges partial edits with later ones winning', () => {
+    expect(Model.mergeEdits(null, null)).toEqual({});
+    expect(Model.mergeEdits(undefined, {name: 'a'})).toEqual({name: 'a'});
+    expect(Model.mergeEdits({lifetime: 'route'}, null)).toEqual({
+      lifetime: 'route',
+    });
+    expect(
+      Model.mergeEdits(
+        {name: 'a', safety: 'read', description: 'Base.'},
+        {name: 'b', lifetime: 'app'},
+      ),
+    ).toEqual({
+      name: 'b',
+      safety: 'read',
+      description: 'Base.',
+      lifetime: 'app',
+    });
+    // A field the patch leaves undefined keeps the base value; null is a
+    // value (it removes the schema).
+    expect(
+      Model.mergeEdits(
+        {description: 'keep', inputSchema: {type: 'object', properties: {}}},
+        {description: undefined, inputSchema: null},
+      ),
+    ).toEqual({description: 'keep', inputSchema: null});
+    // The inputs are not mutated.
+    const base = {name: 'a'};
+    Model.mergeEdits(base, {name: 'b'});
+    expect(base).toEqual({name: 'a'});
+  });
+
+  it('applies a schema removal and leaves the proposal alone for no-op edits', () => {
+    const proposal = createProposal();
+    const removed = Model.applyEdits(proposal, {inputSchema: null});
+    expect(removed).not.toBe(proposal);
+    expect(removed.inputSchema).toBe(null);
+    expect(proposal.inputSchema).not.toBe(null);
+    const replaced = Model.applyEdits(proposal, {
+      inputSchema: {type: 'object', properties: {}},
+    });
+    expect(replaced.inputSchema).toEqual({type: 'object', properties: {}});
+    // Edits equal to the proposal, or undefined, change nothing.
+    expect(
+      Model.applyEdits(proposal, {
+        name: proposal.name,
+        description: proposal.description,
+        safety: proposal.safety,
+        lifetime: proposal.lifetime,
+        inputSchema: proposal.inputSchema,
+      }),
+    ).toBe(proposal);
+    expect(Model.applyEdits(proposal, {})).toBe(proposal);
+    expect(Model.applyEdits(proposal, undefined)).toBe(proposal);
+    expect(Model.applyEdits(proposal, {name: undefined})).toBe(proposal);
+    const relifed = Model.applyEdits(proposal, {lifetime: 'app'});
+    expect(relifed.lifetime).toBe('app');
+    expect(relifed.qualifiedName).toBe(proposal.qualifiedName);
+  });
+
   it('summarizes checks without counting pending ones', () => {
     const checks = Model.summarizeChecks([
       {check: 'binding', level: 'ok', summary: ''},

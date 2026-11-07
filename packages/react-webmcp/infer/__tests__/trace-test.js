@@ -9,10 +9,15 @@
 
 'use strict';
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
 const {
   applyJourneys,
   applyTrace,
   parseTraceArgs,
+  readJourney,
   stepMatch,
 } = require('../trace.flow');
 
@@ -368,5 +373,104 @@ describe('infer trace', () => {
       });
       expect(applyJourneys(file([proposal()]), [])).toEqual(file([proposal()]));
     });
+  });
+});
+
+describe('readJourney', () => {
+  let tmp;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'react-webmcp-journey-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  });
+
+  function write(name, value) {
+    const journeyFile = path.join(tmp, name);
+    fs.writeFileSync(
+      journeyFile,
+      typeof value === 'string' ? value : JSON.stringify(value),
+    );
+    return journeyFile;
+  }
+
+  it('reads a journey with every kind of step', () => {
+    const steps = [
+      {click: 'Add', near: 'Green tea'},
+      {fill: 'Email', value: 'a@b.c'},
+      {tool: 'cart_list_items'},
+      {wait: 100},
+    ];
+    const journeyFile = write('shop.json', {
+      name: 'Buy tea',
+      description: 'Adds tea to the cart.',
+      steps,
+    });
+    expect(readJourney(journeyFile)).toEqual({
+      name: 'Buy tea',
+      description: 'Adds tea to the cart.',
+      steps,
+    });
+  });
+
+  it('names a journey after its file when the file has no name', () => {
+    expect(readJourney(write('checkout-flow.json', {steps: []}))).toEqual({
+      name: 'checkout-flow',
+      description: undefined,
+      steps: [],
+    });
+    expect(
+      readJourney(write('empty-name.json', {name: '', steps: []})).name,
+    ).toBe('empty-name');
+    expect(
+      readJourney(write('wrong-type.json', {name: 7, steps: []})).name,
+    ).toBe('wrong-type');
+  });
+
+  it('rejects a file without a steps array', () => {
+    expect(() => readJourney(write('no-steps.json', {name: 'x'}))).toThrow(
+      'no-steps.json is not a journey (no "steps" array).',
+    );
+    expect(() =>
+      readJourney(write('steps-object.json', {steps: {click: 'Add'}})),
+    ).toThrow('is not a journey (no "steps" array)');
+    expect(() => readJourney(write('list.json', [{click: 'Add'}]))).toThrow(
+      'is not a journey (no "steps" array)',
+    );
+    expect(() => readJourney(write('null.json', 'null'))).toThrow(
+      'is not a journey (no "steps" array)',
+    );
+  });
+
+  it('rejects a step that is not a click, fill, tool or wait', () => {
+    expect(() =>
+      readJourney(
+        write('hover.json', {steps: [{click: 'Add'}, {hover: 'Add'}]}),
+      ),
+    ).toThrow(
+      'A journey step needs one of click, fill, tool or wait: {"hover":"Add"}',
+    );
+    // The right key with the wrong type of value is not a step either.
+    expect(() =>
+      readJourney(write('wait.json', {steps: [{wait: '100'}]})),
+    ).toThrow(
+      'A journey step needs one of click, fill, tool or wait: {"wait":"100"}',
+    );
+    expect(() => readJourney(write('empty.json', {steps: [{}]}))).toThrow(
+      'A journey step needs one of click, fill, tool or wait: {}',
+    );
+  });
+
+  it('reports a file it cannot read or parse', () => {
+    const missing = path.join(tmp, 'missing.json');
+    expect(() => readJourney(missing)).toThrow(
+      `Could not read journey ${missing}: `,
+    );
+    const broken = write('broken.json', '{not json');
+    expect(() => readJourney(broken)).toThrow(
+      `Could not read journey ${broken}: `,
+    );
   });
 });

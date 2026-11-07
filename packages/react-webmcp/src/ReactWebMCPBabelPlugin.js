@@ -299,18 +299,18 @@ export default function ReactWebMCPBabelPlugin(
       },
       ImportDeclaration(nodePath: any, state: PluginState) {
         const node = nodePath.node;
+        if (node.importKind === 'type' || node.importKind === 'typeof') {
+          // Erased by the Flow or TypeScript transform; the no-op module
+          // exports no types anyway.
+          return;
+        }
         if (shouldRewrite(node.source.value)) {
           if (!isEnabled(state)) {
             node.source = t.stringLiteral(NOOP_SOURCE);
           }
           return;
         }
-        if (
-          node.source.value === REACT_DOM_SOURCE &&
-          node.importKind !== 'type' &&
-          node.importKind !== 'typeof' &&
-          !isEnabled(state)
-        ) {
+        if (node.source.value === REACT_DOM_SOURCE && !isEnabled(state)) {
           splitReactDOMDeclaration(nodePath, specifiers =>
             t.importDeclaration(specifiers, t.stringLiteral(NOOP_SOURCE)),
           );
@@ -319,7 +319,7 @@ export default function ReactWebMCPBabelPlugin(
       ExportNamedDeclaration(nodePath: any, state: PluginState) {
         const node = nodePath.node;
         const source = node.source;
-        if (source == null) {
+        if (source == null || node.exportKind === 'type') {
           return;
         }
         if (shouldRewrite(source.value)) {
@@ -328,11 +328,7 @@ export default function ReactWebMCPBabelPlugin(
           }
           return;
         }
-        if (
-          source.value === REACT_DOM_SOURCE &&
-          node.exportKind !== 'type' &&
-          !isEnabled(state)
-        ) {
+        if (source.value === REACT_DOM_SOURCE && !isEnabled(state)) {
           splitReactDOMDeclaration(nodePath, specifiers =>
             t.exportNamedDeclaration(
               null,
@@ -342,9 +338,18 @@ export default function ReactWebMCPBabelPlugin(
           );
         }
       },
+      // `export * from 'react-dom'` is left alone: the four WebMCP names
+      // cannot be split out of a star re-export, and the module importing
+      // them from it gets what react-dom exports (undefined on a build
+      // without the flag).
       ExportAllDeclaration(nodePath: any, state: PluginState) {
-        if (shouldRewrite(nodePath.node.source.value) && !isEnabled(state)) {
-          nodePath.node.source = t.stringLiteral(NOOP_SOURCE);
+        const node = nodePath.node;
+        if (
+          node.exportKind !== 'type' &&
+          shouldRewrite(node.source.value) &&
+          !isEnabled(state)
+        ) {
+          node.source = t.stringLiteral(NOOP_SOURCE);
         }
       },
       CallExpression(nodePath: any, state: PluginState) {

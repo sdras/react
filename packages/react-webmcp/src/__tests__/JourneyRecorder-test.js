@@ -124,7 +124,7 @@ describe('JourneyRecorder', () => {
 
   it('keeps a password out of the journey after a show-password toggle', () => {
     html(`
-      <input type="password" placeholder="Passphrase" />
+      <input type="password" placeholder="Unlock phrase" />
       <button type="button">Show</button>
     `);
     const field = document.querySelector('input');
@@ -179,5 +179,96 @@ describe('JourneyRecorder', () => {
     expect(Recorder.journeyFileName('Buy tea / checkout!')).toBe(
       'Buy-tea-checkout.json',
     );
+  });
+  it('tells payment and credential hints apart from words that merely contain them', () => {
+    const secret = [
+      'password',
+      'Password',
+      'passwd',
+      'Passphrase',
+      'new_password',
+      'clientSecret',
+      'cvv',
+      'CVC',
+      'cvv2',
+      'Card number',
+      'cardNumber',
+      'card_no',
+      'cardholder',
+      'cardholderName',
+      'Name on card',
+      'Credit card',
+      'creditCardNumber',
+      'debit_card',
+      'giftcard',
+      'Card',
+      'cc-number',
+      'ccNumber',
+      'cc_exp',
+      'Security code',
+      'securityCode',
+      'otp',
+      'one-time OTP',
+      'ssn',
+      'PIN',
+      'pin_code',
+      'pinCode',
+    ];
+    const harmless = [
+      'discard_reason',
+      'Postcard message',
+      'cardigan_size',
+      'cardTitle',
+      'scorecard',
+      'Cardio minutes',
+      'Email',
+      'cc',
+      'pinned',
+      'Spinner speed',
+      'passing_score',
+      'Shipping address',
+      'Something to do',
+      'quantity',
+    ];
+    expect(secret.map(hint => [hint, Recorder.isSecretHint(hint)])).toEqual(
+      secret.map(hint => [hint, true]),
+    );
+    expect(harmless.map(hint => [hint, Recorder.isSecretHint(hint)])).toEqual(
+      harmless.map(hint => [hint, false]),
+    );
+  });
+
+  it('records fields whose names only contain a secret-looking word', () => {
+    html(`
+      <input name="discard_reason" />
+      <input placeholder="Postcard message" />
+      <label for="cardigan_size">Size</label><input id="cardigan_size" />
+      <input aria-label="Card title" />
+      <input name="cardNumber" />
+    `);
+    const [reason, postcard, cardigan, title, card] =
+      document.querySelectorAll('input');
+    setValue(reason, 'changed my mind');
+    setValue(postcard, 'wish you were here');
+    setValue(cardigan, 'M');
+    setValue(title, 'Ship it');
+    setValue(card, '4242');
+    expect(Recorder.describeFill(reason)).toEqual({
+      fill: 'discard_reason',
+      value: 'changed my mind',
+    });
+    expect(Recorder.describeFill(postcard)).toEqual({
+      fill: 'Postcard message',
+      value: 'wish you were here',
+    });
+    expect(Recorder.describeFill(cardigan)).toEqual({
+      fill: 'Size',
+      value: 'M',
+    });
+    expect(Recorder.describeFill(title)).toEqual({
+      fill: 'Card title',
+      value: 'Ship it',
+    });
+    expect(Recorder.describeFill(card)).toBe(null);
   });
 });
