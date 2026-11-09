@@ -17,10 +17,12 @@ export const ROOT_TOOL_SCOPE: ToolScopeContextValue = {
   available: true,
 };
 
-let ToolScopeContext: ReactContext<ToolScopeContextValue> | null = null;
+let ToolScopeContext: null | ReactContext<ToolScopeContextValue> = null;
 
-// Created on first use so builds with the flag off carry no context object.
-// The tool tree renderer in react-webmcp reads the same object through
+// Created the first time it is asked for. With enableWebMCP on, that is when
+// the react-dom entry builds the shared internals, at module evaluation; with
+// the flag off nothing asks, so those builds carry no context object. The
+// tool tree renderer in react-webmcp reads the same object through
 // ReactDOMSharedInternals, which is what lets a DOM-tree scope reach a tool
 // tree root.
 export function getToolScopeContext(): ReactContext<ToolScopeContextValue> {

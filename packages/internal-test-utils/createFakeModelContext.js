@@ -13,20 +13,48 @@
 // Options: `failFor` / `rejectFor` refuse every registration of that name,
 // synchronously or with a rejected promise; `failOnceFor` / `rejectOnceFor`
 // refuse only the first attempt, so a test can see a retry succeed.
+// `pendingFor` answers with a promise that stays pending, and registers the
+// tool, only when the test calls `resolveRegistration(name)`.
 // `attempts(name)` counts registerTool calls per name, refused ones included.
 function createFakeModelContext(options = {}) {
   const tools = new Map();
   const log = [];
-  const failFor = options.failFor || null;
-  const rejectFor = options.rejectFor || null;
-  const failOnceFor = options.failOnceFor || null;
-  const rejectOnceFor = options.rejectOnceFor || null;
+  const failFor = options.failFor !== undefined ? options.failFor : null;
+  const rejectFor = options.rejectFor !== undefined ? options.rejectFor : null;
+  const failOnceFor =
+    options.failOnceFor !== undefined ? options.failOnceFor : null;
+  const rejectOnceFor =
+    options.rejectOnceFor !== undefined ? options.rejectOnceFor : null;
+  const pendingFor =
+    options.pendingFor !== undefined ? options.pendingFor : null;
   const attemptCounts = new Map();
+  const pendingResolvers = new Map();
+
+  function install(tool, registerOptions) {
+    const signal = registerOptions != null ? registerOptions.signal : undefined;
+    if (signal != null && signal.aborted) {
+      // Unregistered before the browser answered.
+      return;
+    }
+    log.push(['register', tool.name]);
+    tools.set(tool.name, tool);
+    if (signal != null) {
+      signal.addEventListener('abort', () => {
+        if (tools.get(tool.name) === tool) {
+          tools.delete(tool.name);
+        }
+        log.push(['abort', tool.name]);
+      });
+    }
+  }
+
   return {
     tools,
     log,
     registerTool(tool, registerOptions) {
-      const attempt = (attemptCounts.get(tool.name) || 0) + 1;
+      const previousAttempts = attemptCounts.get(tool.name);
+      const attempt =
+        (previousAttempts === undefined ? 0 : previousAttempts) + 1;
       attemptCounts.set(tool.name, attempt);
       if (
         (failFor !== null && tool.name === failFor) ||
@@ -42,31 +70,41 @@ function createFakeModelContext(options = {}) {
           new Error('Async registration refused for ' + tool.name),
         );
       }
-      log.push(['register', tool.name]);
-      tools.set(tool.name, tool);
-      const signal = registerOptions && registerOptions.signal;
-      if (signal) {
-        signal.addEventListener('abort', () => {
-          if (tools.get(tool.name) === tool) {
-            tools.delete(tool.name);
-          }
-          log.push(['abort', tool.name]);
+      if (pendingFor !== null && tool.name === pendingFor) {
+        return new Promise(resolve => {
+          pendingResolvers.set(tool.name, () => {
+            install(tool, registerOptions);
+            resolve();
+          });
         });
       }
+      install(tool, registerOptions);
       return undefined;
+    },
+    resolveRegistration(name) {
+      const resolver = pendingResolvers.get(name);
+      if (resolver === undefined) {
+        throw new Error('No pending registration for ' + name);
+      }
+      pendingResolvers.delete(name);
+      resolver();
     },
     async executeTool(name, input, client) {
       const tool = tools.get(name);
       if (tool === undefined) {
         throw new Error('No tool named ' + name);
       }
-      return tool.execute(input, client || {signal: null});
+      return tool.execute(
+        input,
+        client !== undefined ? client : {signal: null},
+      );
     },
     names() {
       return Array.from(tools.keys()).sort();
     },
     attempts(name) {
-      return attemptCounts.get(name) || 0;
+      const count = attemptCounts.get(name);
+      return count === undefined ? 0 : count;
     },
     registrations() {
       return log.filter(entry => entry[0] === 'register').map(e => e[1]);

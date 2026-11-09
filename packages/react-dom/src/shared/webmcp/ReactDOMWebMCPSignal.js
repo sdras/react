@@ -12,9 +12,9 @@
 // hiding it, leaving the tool tree), whichever comes first. The lifetime
 // signal is never dropped just because the browser supplied one.
 export function combineAbortSignals(
-  client: AbortSignal | null,
-  lifetime: AbortSignal | null,
-): AbortSignal | null {
+  client: null | AbortSignal,
+  lifetime: null | AbortSignal,
+): null | AbortSignal {
   if (client === null) {
     return lifetime;
   }

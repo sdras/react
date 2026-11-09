@@ -107,4 +107,44 @@ describe('react-webmcp DevTools integration', () => {
     await act(() => root.unmount());
     delete document.modelContext;
   });
+
+  // The handle is installed by the first record, not when react-dom loads, so
+  // a page that never registers a tool exposes nothing; a later record puts
+  // back a handle that was removed.
+  // @gate __DEV__
+  // @gate enableWebMCP
+  it('installs the registry handle on the first record and reinstalls one that was removed', async () => {
+    document.modelContext = createFakeModelContext();
+    const container = document.createElement('div');
+    const root = ReactDOMClient.createRoot(container);
+    function App({showSecond}) {
+      return (
+        <ReactWebMCP.ToolTree>
+          <ReactWebMCP.Tool
+            name="first"
+            description="First."
+            safety="read"
+            execute={() => 1}
+          />
+          {showSecond ? (
+            <ReactWebMCP.Tool
+              name="second"
+              description="Second."
+              safety="read"
+              execute={() => 2}
+            />
+          ) : null}
+        </ReactWebMCP.ToolTree>
+      );
+    }
+    expect(global.__REACT_WEBMCP__).toBe(undefined);
+    await act(() => root.render(<App showSecond={false} />));
+    expect(global.__REACT_WEBMCP__.getTools()).toHaveLength(1);
+
+    delete global.__REACT_WEBMCP__;
+    await act(() => root.render(<App showSecond={true} />));
+    expect(global.__REACT_WEBMCP__.getTools()).toHaveLength(2);
+    await act(() => root.unmount());
+    delete document.modelContext;
+  });
 });

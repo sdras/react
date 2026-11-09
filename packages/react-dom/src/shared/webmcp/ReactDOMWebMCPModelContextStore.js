@@ -18,7 +18,7 @@ const POLL_INTERVAL_MS = 500;
 const MAX_POLLS = 20;
 
 const listeners: Set<() => void> = new Set();
-let timer: IntervalID | null = null;
+let timer: null | IntervalID = null;
 
 function isSupported(): boolean {
   return getModelContext() !== null;

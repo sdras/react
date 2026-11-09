@@ -41,15 +41,15 @@ const records: Map<mixed, Entry> = new Map();
 let nextOrder = 0;
 const listeners: Set<() => void> = new Set();
 // One record per key, derived from `records`; null while stale.
-let keyView: Map<string, ToolRecord> | null = null;
-let publicSnapshot: $ReadOnlyArray<PublicToolRecord> | null = null;
+let keyView: null | Map<string, ToolRecord> = null;
+let publicSnapshot: null | $ReadOnlyArray<PublicToolRecord> = null;
 let batchDepth = 0;
 let pendingEmit = false;
 // DEV: owner pairs already reported as a collision. Weak, so a pair is
 // reported once for as long as both instances exist, a StrictMode remount of
 // the same instances does not repeat it, and a new instance that collides
 // with the same key later is reported again.
-let reportedCollisions: WeakMap<
+const reportedCollisions: WeakMap<
   interface {},
   WeakSet<interface {}>,
 > = new WeakMap();
@@ -282,15 +282,6 @@ export function getRegisteredTools(): $ReadOnlyArray<PublicToolRecord> {
     publicSnapshot = snapshot;
   }
   return publicSnapshot;
-}
-
-// Test-only.
-export function resetRegistryForTesting(): void {
-  records.clear();
-  listeners.clear();
-  keyView = null;
-  publicSnapshot = null;
-  reportedCollisions = new WeakMap();
 }
 
 export const REGISTRY_GLOBAL_KEY = '__REACT_WEBMCP__';

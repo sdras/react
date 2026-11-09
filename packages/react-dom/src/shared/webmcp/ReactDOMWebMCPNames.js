@@ -61,6 +61,26 @@ export function resolveQualifiedName(
   return path.join('_') + '_' + name;
 }
 
+// Everything an agent can observe about a tool, from the content keys of its
+// schema and annotations. For a caller that keeps those keys across renders
+// (the hook), so unchanged objects are not serialized again.
+export function signatureFromKeys(
+  qualifiedName: string,
+  description: string,
+  inputSchemaKey: string,
+  annotationsKey: string,
+): string {
+  return (
+    qualifiedName +
+    '\n' +
+    description +
+    '\n' +
+    inputSchemaKey +
+    '\n' +
+    annotationsKey
+  );
+}
+
 // Everything an agent can observe about a tool. When the signature is
 // unchanged the tool stays registered; `execute` is never part of it because
 // handlers are read through a ref at call time.
@@ -70,13 +90,10 @@ export function computeSignature(
   inputSchema: mixed,
   annotations: ToolAnnotations,
 ): string {
-  return (
-    qualifiedName +
-    '\n' +
-    description +
-    '\n' +
-    contentKey(inputSchema) +
-    '\n' +
-    contentKey(annotations)
+  return signatureFromKeys(
+    qualifiedName,
+    description,
+    contentKey(inputSchema),
+    contentKey(annotations),
   );
 }

@@ -5,7 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
- * @jest-environment jsdom
  */
 
 'use strict';
@@ -19,6 +18,7 @@ let act;
 let waitFor;
 let assertLog;
 let assertConsoleErrorDev;
+let assertConsoleWarnDev;
 let createFakeModelContext;
 let useWebMCPTool;
 let WebMCPScope;
@@ -52,6 +52,7 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       waitFor,
       assertLog,
       assertConsoleErrorDev,
+      assertConsoleWarnDev,
     } = require('internal-test-utils'));
     ({
       createFakeModelContext,
@@ -152,6 +153,19 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
         annotations: {untrustedContentHint: true},
         execute: () => 'ok',
       });
+      useWebMCPTool({
+        name: 'add_todo',
+        description: 'Add a todo.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      useWebMCPTool({
+        name: 'peek_todos',
+        description: 'Peek at todos.',
+        safety: 'read',
+        annotations: {readOnlyHint: false},
+        execute: () => 'ok',
+      });
       return null;
     }
     await act(() => root.render(<App />));
@@ -161,6 +175,11 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(modelContext.tools.get('clear_todos').annotations).toEqual({
       consequentialHint: true,
       untrustedContentHint: true,
+    });
+    // Mutation is what agents assume, so it adds no hint.
+    expect(modelContext.tools.get('add_todo').annotations).toEqual({});
+    expect(modelContext.tools.get('peek_todos').annotations).toEqual({
+      readOnlyHint: false,
     });
   });
 
@@ -241,6 +260,24 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
   });
 
   // @gate enableWebMCP
+  it('replaces its record when a component renames its tool', async () => {
+    function App({name}) {
+      useWebMCPTool({
+        name,
+        description: 'Tool.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App name="before" />));
+    await act(() => root.render(<App name="after" />));
+    expect(modelContext.names()).toEqual(['after']);
+    // One record per component: the old name left with the old record.
+    expect(statuses()).toEqual([['after', 'registered', 'hook']]);
+  });
+
+  // @gate enableWebMCP
   it('passes an AbortSignal to execute that fires on unmount', async () => {
     let seenSignal = null;
     function App() {
@@ -263,8 +300,10 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(seenSignal.aborted).toBe(true);
   });
 
-  // @gate enableWebMCP
-  it("aborts execute's signal when the browser cancels the call or the tool goes away", async () => {
+  // The signal execute receives combines the browser's with the tool's own
+  // lifetime: whichever aborts first aborts it, with that side's reason, and
+  // neither side is dropped because the other exists.
+  async function expectExecuteSignalToCombineBothSides() {
     let seenSignal = null;
     function App() {
       useWebMCPTool({
@@ -286,8 +325,10 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       {signal: browserController.signal},
     );
     expect(seenSignal.aborted).toBe(false);
-    browserController.abort();
+    const reason = new Error('user cancelled');
+    browserController.abort(reason);
     expect(seenSignal.aborted).toBe(true);
+    expect(seenSignal.reason).toBe(reason);
 
     // The tool's own lifetime is never dropped because the browser supplied
     // a signal: a call in flight stops when its UI goes away.
@@ -301,6 +342,25 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     await act(() => root.render(null));
     expect(seenSignal.aborted).toBe(true);
     expect(laterController.signal.aborted).toBe(false);
+  }
+
+  // @gate enableWebMCP
+  it("aborts execute's signal when the browser cancels the call or the tool goes away", async () => {
+    expect(typeof AbortSignal.any).toBe('function');
+    await expectExecuteSignalToCombineBothSides();
+  });
+
+  // A browser without AbortSignal.any gets the two signals combined by hand.
+  // Both paths must behave the same.
+  // @gate enableWebMCP
+  it("aborts execute's signal the same way in a browser without AbortSignal.any", async () => {
+    const original = AbortSignal.any;
+    AbortSignal.any = undefined;
+    try {
+      await expectExecuteSignalToCombineBothSides();
+    } finally {
+      AbortSignal.any = original;
+    }
   });
 
   // @gate enableWebMCP
@@ -336,9 +396,127 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     });
   });
 
+  // What execute returns becomes an MCP result the same way for every tool:
+  // text is wrapped, nothing is an empty success, a result already in MCP
+  // shape passes through as it is, and anything else is JSON.
+  // @gate enableWebMCP
+  it('normalizes what execute returns into an MCP result', async () => {
+    const shaped = {content: [{type: 'text', text: 'shaped'}], isError: false};
+    const circular = {};
+    circular.self = circular;
+    function App() {
+      useWebMCPTool({
+        name: 'text',
+        description: 'Text.',
+        safety: 'read',
+        execute: () => 'done',
+      });
+      useWebMCPTool({
+        name: 'nothing',
+        description: 'Nothing.',
+        safety: 'read',
+        execute: () => undefined,
+      });
+      useWebMCPTool({
+        name: 'null_result',
+        description: 'Null.',
+        safety: 'read',
+        execute: () => null,
+      });
+      useWebMCPTool({
+        name: 'shaped',
+        description: 'Shaped.',
+        safety: 'read',
+        execute: () => shaped,
+      });
+      useWebMCPTool({
+        name: 'object',
+        description: 'Object.',
+        safety: 'read',
+        execute: () => ({items: [1, 2]}),
+      });
+      useWebMCPTool({
+        name: 'number',
+        description: 'Number.',
+        safety: 'read',
+        execute: () => 42,
+      });
+      useWebMCPTool({
+        name: 'circular',
+        description: 'Circular.',
+        safety: 'read',
+        execute: () => circular,
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    expect(await modelContext.executeTool('text', {})).toEqual({
+      content: [{type: 'text', text: 'done'}],
+    });
+    expect(await modelContext.executeTool('nothing', {})).toEqual({
+      content: [],
+    });
+    expect(await modelContext.executeTool('null_result', {})).toEqual({
+      content: [],
+    });
+    expect(await modelContext.executeTool('shaped', {})).toBe(shaped);
+    expect(await modelContext.executeTool('object', {})).toEqual({
+      content: [{type: 'text', text: '{"items":[1,2]}'}],
+    });
+    expect(await modelContext.executeTool('number', {})).toEqual({
+      content: [{type: 'text', text: '42'}],
+    });
+    // A value JSON cannot serialize still produces a result.
+    expect(await modelContext.executeTool('circular', {})).toEqual({
+      content: [{type: 'text', text: '[object Object]'}],
+    });
+  });
+
+  // A thrown value that is not an Error must still read as a failure to the
+  // agent, never as a successful result.
+  // @gate enableWebMCP
+  it('turns a thrown string or object into an isError result', async () => {
+    const errors = [];
+    function App() {
+      useWebMCPTool({
+        name: 'throws_string',
+        description: 'Throws a string.',
+        safety: 'read',
+        onError: error => errors.push(error),
+        execute: () => {
+          // eslint-disable-next-line no-throw-literal
+          throw 'not signed in';
+        },
+      });
+      useWebMCPTool({
+        name: 'throws_object',
+        description: 'Throws an object.',
+        safety: 'read',
+        onError: error => errors.push(error),
+        execute: () => {
+          // eslint-disable-next-line no-throw-literal
+          throw {code: 403};
+        },
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    expect(await modelContext.executeTool('throws_string', {})).toEqual({
+      content: [{type: 'text', text: 'not signed in'}],
+      isError: true,
+    });
+    expect(await modelContext.executeTool('throws_object', {})).toEqual({
+      content: [{type: 'text', text: '{"code":403}'}],
+      isError: true,
+    });
+    // onError receives what was thrown, as it was thrown.
+    expect(errors).toEqual(['not signed in', {code: 403}]);
+  });
+
   // Registration lives in a layout effect, which React disconnects while a
   // Suspense boundary shows its fallback and reconnects on reveal. The record
-  // survives the hide so developer tooling can show the tool as hidden.
+  // survives this hide, because React keeps passive effects connected under a
+  // fallback, so developer tooling can show the tool as hidden.
   // @gate enableWebMCP
   it('unregisters while a Suspense boundary hides its component and re-registers on reveal', async () => {
     let resolvePromise;
@@ -390,6 +568,51 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(tools()[0].availability.hidden).toBe(false);
   });
 
+  // A hidden Activity boundary disconnects the passive effects too (the
+  // reconciler keeps them connected under a Suspense fallback only, for
+  // backwards compatibility), so the record leaves the registry together with
+  // the registration instead of staying listed as hidden. Both come back on
+  // reveal.
+  // @gate enableWebMCP
+  it('unregisters and drops the record while an Activity boundary hides its component, and restores both on reveal', async () => {
+    function Tools() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return 'tools';
+    }
+    function App({mode}) {
+      return (
+        <React.Activity mode={mode}>
+          <Tools />
+        </React.Activity>
+      );
+    }
+    await act(() => root.render(<App mode="visible" />));
+    expect(container.textContent).toBe('tools');
+    expect(modelContext.names()).toEqual(['add_item']);
+    expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+
+    await act(() => root.render(<App mode="hidden" />));
+    expect(container.textContent).toBe('');
+    expect(modelContext.names()).toEqual([]);
+    expect(modelContext.log).toEqual([
+      ['register', 'add_item'],
+      ['abort', 'add_item'],
+    ]);
+    expect(statuses()).toEqual([]);
+
+    await act(() => root.render(<App mode="visible" />));
+    expect(container.textContent).toBe('tools');
+    expect(modelContext.names()).toEqual(['add_item']);
+    expect(modelContext.registrations()).toEqual(['add_item', 'add_item']);
+    expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+    expect(tools()[0].availability.hidden).toBe(false);
+  });
+
   // The record is mirrored into a ref by a layout effect, never during
   // render. A transition that React interrupts must not leave a record under
   // a name that never committed.
@@ -428,7 +651,9 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       );
     }
     await act(() => root.render(<App />));
-    assertLog(['Tools a', 'Gate']);
+    // The registering commit's layout effect records the browser's acceptance,
+    // which re-renders Tools once with `registered: true`.
+    assertLog(['Tools a', 'Gate', 'Tools a']);
     expect(modelContext.names()).toEqual(['a']);
 
     // A transition renames the tool and yields after Tools rendered with the
@@ -494,6 +719,24 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
   });
 
   // @gate enableWebMCP
+  it('reports unsupported when document.modelContext cannot register tools', async () => {
+    document.modelContext = {};
+    let result;
+    function App() {
+      result = useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    expect(result.supported).toBe(false);
+    expect(statuses()).toEqual([['add_item', 'unsupported', 'hook']]);
+  });
+
+  // @gate enableWebMCP
   it('registers once document.modelContext appears later', async () => {
     delete document.modelContext;
     let result;
@@ -517,6 +760,138 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     expect(result.supported).toBe(true);
     expect(modelContext.names()).toEqual(['late']);
     expect(statuses()).toEqual([['late', 'registered', 'hook']]);
+  });
+
+  // @gate enableWebMCP
+  it('does not poll while document.modelContext is present', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'present',
+        description: 'Present.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    expect(modelContext.names()).toEqual(['present']);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  // A browser extension can inject document.modelContext after the page has
+  // rendered, so while any tool waits for it, one shared poll looks for it.
+  // @gate enableWebMCP
+  it('shares one poll between waiting tools and stops it once document.modelContext appears', async () => {
+    delete document.modelContext;
+    function Tool({name}) {
+      useWebMCPTool({
+        name,
+        description: 'Tool.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() =>
+      root.render(
+        <>
+          <Tool name="first" />
+          <Tool name="second" />
+        </>,
+      ),
+    );
+    expect(jest.getTimerCount()).toBe(1);
+    await act(() => {
+      jest.advanceTimersByTime(500 * 3);
+    });
+    expect(statuses()).toEqual([
+      ['first', 'unsupported', 'hook'],
+      ['second', 'unsupported', 'hook'],
+    ]);
+
+    document.modelContext = modelContext;
+    await act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(modelContext.names()).toEqual(['first', 'second']);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  // @gate enableWebMCP
+  it('stops polling when the last waiting tool unmounts', async () => {
+    delete document.modelContext;
+    function Tool({name}) {
+      useWebMCPTool({
+        name,
+        description: 'Tool.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    function App({showSecond}) {
+      return (
+        <>
+          <Tool name="first" />
+          {showSecond ? <Tool name="second" /> : null}
+        </>
+      );
+    }
+    await act(() => root.render(<App showSecond={true} />));
+    expect(jest.getTimerCount()).toBe(1);
+    await act(() => root.render(<App showSecond={false} />));
+    expect(jest.getTimerCount()).toBe(1);
+    await act(() => root.render(null));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  // The poll is bounded: a page whose browser never gets the API must not run
+  // a timer forever. A tool that mounts later starts looking again.
+  // @gate enableWebMCP
+  it('gives up polling after ten seconds and starts over for a tool that mounts later', async () => {
+    delete document.modelContext;
+    let result;
+    function App({name}) {
+      result = useWebMCPTool({
+        name,
+        description: 'Tool.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App name="early" />));
+    expect(jest.getTimerCount()).toBe(1);
+    // Nothing of React's runs while the API stays missing, so the timers are
+    // advanced outside act, which would otherwise fire a poll of its own.
+    // Halfway through the budget the poll is still running...
+    jest.advanceTimersByTime(5000);
+    expect(jest.getTimerCount()).toBe(1);
+    // ...and past it, it is gone.
+    jest.advanceTimersByTime(5000);
+    expect(jest.getTimerCount()).toBe(0);
+
+    // An API that shows up after that is not noticed by the finished poll...
+    document.modelContext = modelContext;
+    jest.advanceTimersByTime(10000);
+    expect(result.supported).toBe(false);
+    expect(modelContext.names()).toEqual([]);
+    // ...but the next render reads it.
+    await act(() => root.render(<App name="early" />));
+    expect(result.supported).toBe(true);
+    expect(modelContext.names()).toEqual(['early']);
+
+    // A tool that mounts while the API is missing starts a new poll.
+    await act(() => root.render(null));
+    delete document.modelContext;
+    await act(() => root.render(<App name="late" />));
+    expect(jest.getTimerCount()).toBe(1);
+    document.modelContext = modelContext;
+    await act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(modelContext.names()).toEqual(['late']);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   // @gate enableWebMCP
@@ -617,6 +992,47 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       ['rejected', 'registered', 'hook'],
       ['refused', 'registered', 'hook'],
     ]);
+  });
+
+  // `registered` is committed truth. The render that leads to a registration
+  // cannot know the browser's answer, so it reports false; the layout effect
+  // that registers the tool records the acceptance and the hook re-renders
+  // with it. A refused definition never reports true, and a browser that
+  // answers asynchronously is not counted until it does.
+  // @gate enableWebMCP
+  it('reports registered only once the browser has accepted the definition', async () => {
+    document.modelContext = modelContext = createFakeModelContext({
+      failFor: 'refused',
+      pendingFor: 'pending',
+    });
+    const seen = {accepted: [], refused: [], pending: []};
+    function Tool({name}) {
+      const result = useWebMCPTool({
+        name,
+        description: 'Tool.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      seen[name].push(result.registered);
+      return null;
+    }
+    await act(() =>
+      root.render(
+        <>
+          <Tool name="accepted" />
+          <Tool name="refused" />
+          <Tool name="pending" />
+        </>,
+      ),
+    );
+    expect(seen.accepted).toEqual([false, true]);
+    expect(seen.refused).toEqual([false, false]);
+    expect(seen.pending).toEqual([false]);
+    expect(modelContext.names()).toEqual(['accepted']);
+
+    await act(() => modelContext.resolveRegistration('pending'));
+    expect(seen.pending).toEqual([false, true]);
+    expect(modelContext.names()).toEqual(['accepted', 'pending']);
   });
 
   // The record is rewritten in place when availability changes. Developer
@@ -756,17 +1172,6 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
         },
         execute: async () => 'raw',
       });
-      useWebMCPTool({
-        name: 'handler_throws',
-        description: 'The error handler itself throws.',
-        safety: 'read',
-        onError: () => {
-          throw new Error('handler bug');
-        },
-        execute: () => {
-          throw new Error('original failure');
-        },
-      });
       return null;
     }
     await act(() => root.render(<App />));
@@ -782,16 +1187,48 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       content: [{type: 'text', text: 'cannot format'}],
       isError: true,
     });
-    // A failing onError must not mask the original failure.
-    expect(await modelContext.executeTool('handler_throws', {})).toEqual({
-      content: [{type: 'text', text: 'original failure'}],
-      isError: true,
-    });
     expect(errors).toEqual([
       'rejects:network down',
       'format_returns_error:nothing to show',
       'format_throws:cannot format',
     ]);
+  });
+
+  // An onError that throws must neither mask the tool's failure nor be
+  // swallowed: the agent gets the original failure, and the handler's error
+  // is reported as an uncaught error, like one thrown from an event handler.
+  // @gate enableWebMCP
+  it('surfaces an error thrown by onError without masking the tool failure', async () => {
+    const uncaught = [];
+    function handleWindowError(event) {
+      event.preventDefault();
+      uncaught.push(event.error.message);
+    }
+    function App() {
+      useWebMCPTool({
+        name: 'handler_throws',
+        description: 'The error handler itself throws.',
+        safety: 'read',
+        onError: () => {
+          throw new Error('handler bug');
+        },
+        execute: () => {
+          throw new Error('original failure');
+        },
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    window.addEventListener('error', handleWindowError);
+    try {
+      expect(await modelContext.executeTool('handler_throws', {})).toEqual({
+        content: [{type: 'text', text: 'original failure'}],
+        isError: true,
+      });
+    } finally {
+      window.removeEventListener('error', handleWindowError);
+    }
+    expect(uncaught).toEqual(['handler bug']);
   });
 
   // The server snapshot says unsupported, the client snapshot says supported
@@ -846,20 +1283,25 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     }
     await act(() => root.render(<App />));
     assertConsoleErrorDev([
-      'WebMCP: The tool "broken" has no `execute` function. It will not be registered.' +
+      'The WebMCP tool "broken" has no `execute` function. It will not be ' +
+        'registered.' +
         '\n    in App (at **)',
     ]);
     expect(statuses()).toEqual([['broken', 'error', 'hook']]);
+    expect(tools()[0].error).toBe(
+      'The WebMCP tool "broken" has no `execute` function.',
+    );
   });
 
   // @gate enableWebMCP
   it('warns when two components register the same agent-facing name', async () => {
-    function Tool({keyName}) {
+    function Tool({keyName, enabled}) {
       useWebMCPTool({
         key: keyName,
         name: 'add_item',
         description: 'Add an item.',
         safety: 'mutate',
+        enabled,
         execute: () => 'ok',
       });
       return null;
@@ -873,10 +1315,24 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       ),
     );
     assertConsoleErrorDev([
-      'WebMCP: Two tools are registered with the name "add_item". ' +
-        'Agents cannot tell them apart. Give each one a unique `key` and a ' +
-        'distinct name, or wrap them in a <ToolScope name> to prefix it.' +
+      'Two WebMCP tools are registered with the name "add_item". Agents ' +
+        'cannot tell them apart. Give them distinct names, or wrap one in ' +
+        '<ReactDOM.unstable_WebMCPScope name> to prefix it.' +
         '\n    in Tool (at **)',
+    ]);
+    // A change to a tool's availability is not a new definition, so the same
+    // problem is not reported again.
+    await act(() =>
+      root.render(
+        <>
+          <Tool keyName="first" />
+          <Tool keyName="second" enabled={false} />
+        </>,
+      ),
+    );
+    expect(statuses()).toEqual([
+      ['add_item', 'registered', 'hook'],
+      ['add_item', 'disabled', 'hook'],
     ]);
   });
 
@@ -885,7 +1341,7 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     function Tool({id}) {
       useWebMCPTool({
         name: 'add_item',
-        description: 'Add an item.',
+        description: 'Add an item (' + id + ').',
         safety: 'mutate',
         execute: () => id,
       });
@@ -901,18 +1357,21 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     }
     await act(() => root.render(<App showFirst={true} showSecond={true} />));
     assertConsoleErrorDev([
-      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'Two components registered a WebMCP tool named "add_item" without ' +
         'distinct keys. Agents cannot tell them apart, and developer tooling ' +
         'only keeps the most recent one. Give them distinct names, wrap one ' +
-        'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
-        'useWebMCPTool call (`id` on <Tool>).' +
+        'in <ReactDOM.unstable_WebMCPScope name> to prefix it, or pass a ' +
+        'unique `key` option to each ReactDOM.unstable_useWebMCPTool call.' +
         '\n    in App (at **)',
     ]);
+    // Tooling shows the most recently written of the two.
     expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+    expect(tools()[0].description).toBe('Add an item (second).');
 
     // The first component unmounting must not remove the second's record.
     await act(() => root.render(<App showFirst={false} showSecond={true} />));
     expect(statuses()).toEqual([['add_item', 'registered', 'hook']]);
+    expect(tools()[0].description).toBe('Add an item (second).');
     expect(modelContext.names()).toEqual(['add_item']);
 
     await act(() => root.render(<App showFirst={false} showSecond={false} />));
@@ -970,11 +1429,11 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     // attributed to the component that mounted into it.
     await act(() => root.render(<App suspend={true} showNewcomer={true} />));
     assertConsoleErrorDev([
-      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'Two components registered a WebMCP tool named "add_item" without ' +
         'distinct keys. Agents cannot tell them apart, and developer tooling ' +
         'only keeps the most recent one. Give them distinct names, wrap one ' +
-        'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
-        'useWebMCPTool call (`id` on <Tool>).' +
+        'in <ReactDOM.unstable_WebMCPScope name> to prefix it, or pass a ' +
+        'unique `key` option to each ReactDOM.unstable_useWebMCPTool call.' +
         '\n    in Late (at **)' +
         '\n    in App (at **)',
     ]);
@@ -994,11 +1453,11 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
       return null;
     }
     const collisionMessage =
-      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'Two components registered a WebMCP tool named "add_item" without ' +
       'distinct keys. Agents cannot tell them apart, and developer tooling ' +
       'only keeps the most recent one. Give them distinct names, wrap one ' +
-      'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
-      'useWebMCPTool call (`id` on <Tool>).';
+      'in <ReactDOM.unstable_WebMCPScope name> to prefix it, or pass a ' +
+      'unique `key` option to each ReactDOM.unstable_useWebMCPTool call.';
     await act(() =>
       root.render(
         <>
@@ -1049,6 +1508,278 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
   });
 
   // @gate enableWebMCP
+  it('reports a tool without a name', async () => {
+    function App() {
+      useWebMCPTool({
+        name: '',
+        description: 'Nameless.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleErrorDev([
+      'Expected the `name` of a WebMCP tool to be a non-empty string.' +
+        '\n    in App (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('reports a tool without a description', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: '',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleErrorDev([
+      'The WebMCP tool "add_item" has no description. Agents pick tools by ' +
+        'their descriptions; say what the tool does and when to use it.' +
+        '\n    in App (at **)',
+    ]);
+  });
+
+  // The agent-facing name is checked as a whole, so a scope name outside the
+  // character set is reported on the tools it prefixes.
+  // @gate enableWebMCP
+  it('reports a name with characters agents may reject, from the tool or from a scope', async () => {
+    function Spaced() {
+      useWebMCPTool({
+        name: 'add item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    function Scoped() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() =>
+      root.render(
+        <>
+          <Spaced />
+          <WebMCPScope name="my cart">
+            <Scoped />
+          </WebMCPScope>
+        </>,
+      ),
+    );
+    assertConsoleErrorDev([
+      'The WebMCP tool name "add item" contains characters other than ' +
+        'letters, digits, underscores and hyphens, which agents may reject. ' +
+        'Use only those in tool and scope names, like "add_item".' +
+        '\n    in Spaced (at **)',
+      'The WebMCP tool name "my cart_add_item" contains characters other ' +
+        'than letters, digits, underscores and hyphens, which agents may ' +
+        'reject. Use only those in tool and scope names, like "add_item".' +
+        '\n    in Scoped (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when a tool name is longer than agents expect', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'a_very_long_tool_name_that_goes_past_thirty',
+        description: 'Long.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleWarnDev([
+      'The WebMCP tool name "a_very_long_tool_name_that_goes_past_thirty" is ' +
+        'longer than 30 characters. Prefer short, action-oriented names like ' +
+        '"add_item".' +
+        '\n    in App (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when scope prefixes push a short name over the budget, and only about the name when that is long itself', async () => {
+    function Short() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    function Long() {
+      useWebMCPTool({
+        name: 'a_very_long_tool_name_that_goes_past_thirty',
+        description: 'Long.',
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() =>
+      root.render(
+        <WebMCPScope name="checkout">
+          <WebMCPScope name="shipping">
+            <WebMCPScope name="address">
+              <Short />
+            </WebMCPScope>
+          </WebMCPScope>
+          <Long />
+        </WebMCPScope>,
+      ),
+    );
+    assertConsoleWarnDev([
+      'The scoped WebMCP tool name "checkout_shipping_address_add_item" is ' +
+        'longer than 30 characters. Use shorter scope names.' +
+        '\n    in Short (at **)',
+      'The WebMCP tool name ' +
+        '"checkout_a_very_long_tool_name_that_goes_past_thirty" is longer ' +
+        'than 30 characters. Prefer short, action-oriented names like ' +
+        '"add_item".' +
+        '\n    in Long (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when a description is longer than agents may keep', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'verbose',
+        description: 'x'.repeat(501),
+        safety: 'read',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleWarnDev([
+      'The description of the WebMCP tool "verbose" is longer than 500 ' +
+        'characters. Agents may truncate it.' +
+        '\n    in App (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when a parameter description is longer than agents may keep', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        inputSchema: {
+          type: 'object',
+          properties: {sku: {type: 'string', description: 'y'.repeat(151)}},
+        },
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleWarnDev([
+      'The description of parameter "sku" on the WebMCP tool "add_item" is ' +
+        'longer than 150 characters.' +
+        '\n    in App (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('reports a required property the inputSchema does not declare', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'add_item',
+        description: 'Add an item.',
+        safety: 'mutate',
+        inputSchema: {
+          type: 'object',
+          properties: {sku: {type: 'string'}},
+          required: ['sku', 'quantity'],
+        },
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleErrorDev([
+      'The inputSchema of the WebMCP tool "add_item" marks "quantity" as ' +
+        'required but does not declare it in `properties`.' +
+        '\n    in App (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('reports required properties when the inputSchema declares none, once per tool', async () => {
+    function Bare() {
+      useWebMCPTool({
+        name: 'bare',
+        description: 'No properties.',
+        safety: 'read',
+        inputSchema: {type: 'object', required: ['sku', 'quantity']},
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    // A schema that is not an object is not inspected.
+    function Untyped() {
+      useWebMCPTool({
+        name: 'untyped',
+        description: 'Untyped.',
+        safety: 'read',
+        inputSchema: 'any',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() =>
+      root.render(
+        <>
+          <Bare />
+          <Untyped />
+        </>,
+      ),
+    );
+    // Issues are reported once per tool and rule, so the second undeclared
+    // property is folded into the first report.
+    assertConsoleErrorDev([
+      'The inputSchema of the WebMCP tool "bare" marks "sku" as required ' +
+        'but does not declare it in `properties`.' +
+        '\n    in Bare (at **)',
+    ]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when a tool does not declare safety, and registers it with no hints', async () => {
+    function App() {
+      useWebMCPTool({
+        name: 'unclassified',
+        description: 'No safety.',
+        execute: () => 'ok',
+      });
+      return null;
+    }
+    await act(() => root.render(<App />));
+    assertConsoleWarnDev([
+      'The WebMCP tool "unclassified" does not declare `safety`. Agents ' +
+        'assume a tool mutates state unless it is marked "read", and ask the ' +
+        'user before running one marked "irreversible".' +
+        '\n    in App (at **)',
+    ]);
+    expect(modelContext.tools.get('unclassified').annotations).toEqual({});
+    expect(tools()[0].safety).toBe(null);
+  });
+
+  // @gate enableWebMCP
   it('exposes the registry through the public readers', async () => {
     const seen = [];
     const unsubscribe = ReactDOM.unstable_subscribeToWebMCPTools(() => {
@@ -1065,8 +1796,20 @@ describe('ReactDOM.unstable_useWebMCPTool', () => {
     }
     await act(() => root.render(<App />));
     expect(seen[seen.length - 1]).toEqual(['public']);
-    expect('ownerToken' in ReactDOM.unstable_getWebMCPTools()[0]).toBe(false);
+    const first = ReactDOM.unstable_getWebMCPTools();
+    expect('ownerToken' in first[0]).toBe(false);
+
+    // Unchanged, the snapshot keeps its identity, so it can back
+    // useSyncExternalStore; a re-render that changes nothing is no change.
+    seen.length = 0;
+    await act(() => root.render(<App />));
+    expect(ReactDOM.unstable_getWebMCPTools()).toBe(first);
+    expect(seen).toEqual([]);
+
     unsubscribe();
+    await act(() => root.render(null));
+    expect(seen).toEqual([]);
+    expect(ReactDOM.unstable_getWebMCPTools()).toEqual([]);
   });
 
   // @gate enableWebMCP

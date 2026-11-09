@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {ToolRecord} from 'shared/ReactWebMCPTypes';
+import type {ToolRecord, ToolSource} from 'shared/ReactWebMCPTypes';
 
 import hasOwnProperty from 'shared/hasOwnProperty';
 
@@ -17,13 +17,52 @@ export const MAX_NAME_LENGTH = 30;
 export const MAX_DESCRIPTION_LENGTH = 500;
 export const MAX_PARAM_DESCRIPTION_LENGTH = 150;
 
-export type ValidationLevel = 'error' | 'warn';
+// The characters agent clients accept in a tool name. MCP clients allow
+// letters, digits, underscores and hyphens and nothing else in common, so a
+// name outside this set may be rejected before the agent ever sees the tool.
+// Scope names are prefixed with underscores (see resolveQualifiedName), so
+// the agent-facing name is checked as a whole. Length is budgeted above.
+const VALID_NAME = /^[a-zA-Z0-9_-]+$/;
 
+export type ValidationRule =
+  | 'duplicate-name'
+  | 'missing-name'
+  | 'invalid-name'
+  | 'name-length'
+  | 'qualified-name-length'
+  | 'missing-description'
+  | 'description-length'
+  | 'required-not-declared'
+  | 'param-description-length'
+  | 'missing-safety'
+  | 'duplicate-key'
+  | 'missing-execute';
+
+// What logIssue needs to print a message. The text itself lives there, one
+// literal per rule, so the warning list extracted from the source has it.
 export type ValidationIssue = {
-  level: ValidationLevel,
-  rule: string,
-  message: string,
+  rule: ValidationRule,
+  // Which API declared the tool. The advice differs between the hook in
+  // react-dom and the tool tree in react-webmcp.
+  source: ToolSource,
+  // The agent-facing name of the tool.
+  qualifiedName: string,
+  // The schema property the rule is about, or null when it has none.
+  detail: null | string,
 };
+
+function createIssue(
+  record: ToolRecord,
+  rule: ValidationRule,
+  detail: null | string,
+): ValidationIssue {
+  return {
+    rule,
+    source: record.source,
+    qualifiedName: record.qualifiedName,
+    detail,
+  };
+}
 
 // Structural checks on a tool definition. These run in DEV only and are
 // reported once per tool and rule.
@@ -32,7 +71,6 @@ export function validateToolRecord(
   existing: Map<string, ToolRecord>,
 ): Array<ValidationIssue> {
   const issues: Array<ValidationIssue> = [];
-  const label = '"' + record.qualifiedName + '"';
 
   let hasDuplicate = false;
   existing.forEach(other => {
@@ -45,62 +83,26 @@ export function validateToolRecord(
     }
   });
   if (hasDuplicate) {
-    issues.push({
-      level: 'error',
-      rule: 'duplicate-name',
-      message:
-        'Two tools are registered with the name ' +
-        label +
-        '. Agents cannot tell them apart. Give each one a unique `key` and ' +
-        'a distinct name, or wrap them in a <ToolScope name> to prefix it.',
-    });
+    issues.push(createIssue(record, 'duplicate-name', null));
   }
 
-  if (record.name.length > MAX_NAME_LENGTH) {
-    issues.push({
-      level: 'warn',
-      rule: 'name-length',
-      message:
-        'The tool name ' +
-        label +
-        ' is longer than ' +
-        MAX_NAME_LENGTH +
-        ' characters. Prefer short, action-oriented names like "add_item".',
-    });
-  } else if (record.qualifiedName.length > MAX_NAME_LENGTH) {
-    issues.push({
-      level: 'warn',
-      rule: 'qualified-name-length',
-      message:
-        'The scoped tool name ' +
-        label +
-        ' is longer than ' +
-        MAX_NAME_LENGTH +
-        ' characters. Use shorter <ToolScope name> prefixes.',
-    });
+  if (typeof record.name !== 'string' || record.name === '') {
+    issues.push(createIssue(record, 'missing-name', null));
+  } else {
+    if (!VALID_NAME.test(record.qualifiedName)) {
+      issues.push(createIssue(record, 'invalid-name', null));
+    }
+    if (record.name.length > MAX_NAME_LENGTH) {
+      issues.push(createIssue(record, 'name-length', null));
+    } else if (record.qualifiedName.length > MAX_NAME_LENGTH) {
+      issues.push(createIssue(record, 'qualified-name-length', null));
+    }
   }
 
   if (typeof record.description !== 'string' || record.description === '') {
-    issues.push({
-      level: 'error',
-      rule: 'missing-description',
-      message:
-        'The tool ' +
-        label +
-        ' has no description. Agents pick tools by their descriptions; say ' +
-        'what the tool does and when to use it.',
-    });
+    issues.push(createIssue(record, 'missing-description', null));
   } else if (record.description.length > MAX_DESCRIPTION_LENGTH) {
-    issues.push({
-      level: 'warn',
-      rule: 'description-length',
-      message:
-        'The description of ' +
-        label +
-        ' is longer than ' +
-        MAX_DESCRIPTION_LENGTH +
-        ' characters. Agents may truncate it.',
-    });
+    issues.push(createIssue(record, 'description-length', null));
   }
 
   const schema: any = record.inputSchema;
@@ -113,17 +115,14 @@ export function validateToolRecord(
       for (let i = 0; i < schema.required.length; i++) {
         const required = schema.required[i];
         if (properties === null || !hasOwnProperty.call(properties, required)) {
-          issues.push({
-            level: 'error',
-            rule: 'required-not-declared',
-            message:
-              'The inputSchema of ' +
-              label +
-              ' marks "' +
+          issues.push(
+            createIssue(
+              record,
+              'required-not-declared',
               // eslint-disable-next-line react-internal/safe-string-coercion
-              String(required) +
-              '" as required but does not declare it in `properties`.',
-          });
+              String(required),
+            ),
+          );
         }
       }
     }
@@ -135,34 +134,16 @@ export function validateToolRecord(
           typeof property.description === 'string' &&
           property.description.length > MAX_PARAM_DESCRIPTION_LENGTH
         ) {
-          issues.push({
-            level: 'warn',
-            rule: 'param-description-length',
-            message:
-              'The description of parameter "' +
-              propertyName +
-              '" on ' +
-              label +
-              ' is longer than ' +
-              MAX_PARAM_DESCRIPTION_LENGTH +
-              ' characters.',
-          });
+          issues.push(
+            createIssue(record, 'param-description-length', propertyName),
+          );
         }
       }
     }
   }
 
   if (record.safety === null) {
-    issues.push({
-      level: 'warn',
-      rule: 'missing-safety',
-      message:
-        'The tool ' +
-        label +
-        ' does not declare `safety`. Agents assume a tool mutates state ' +
-        'unless it is marked "read", and ask the user before running one ' +
-        'marked "irreversible".',
-    });
+    issues.push(createIssue(record, 'missing-safety', null));
   }
 
   return issues;
@@ -172,42 +153,159 @@ export function validateToolRecord(
 // qualified name without distinct keys. Developer tooling shows one of them,
 // so the other disappears from it.
 export function validateKeyCollision(record: ToolRecord): ValidationIssue {
-  return {
-    level: 'error',
-    rule: 'duplicate-key',
-    message:
-      'Two components registered a tool named "' +
-      record.qualifiedName +
-      '" without distinct keys. Agents cannot tell them apart, and developer ' +
-      'tooling only keeps the most recent one. Give them distinct names, wrap ' +
-      'one in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
-      'useWebMCPTool call (`id` on <Tool>).',
-  };
+  return createIssue(record, 'duplicate-key', null);
 }
 
+// Only the hook validates `execute` here; the tool tree in react-webmcp
+// checks its props before it writes a record.
 export function validateExecute(
   qualifiedName: string,
   execute: mixed,
-): ValidationIssue | null {
+): null | ValidationIssue {
   if (typeof execute === 'function') {
     return null;
   }
   return {
-    level: 'error',
     rule: 'missing-execute',
-    message:
-      'The tool "' +
-      qualifiedName +
-      '" has no `execute` function. It will not be registered.',
+    source: 'hook',
+    qualifiedName,
+    detail: null,
   };
 }
 
+// The message for each rule. Structural problems agents reject are errors;
+// exceeded budgets are warnings.
 export function logIssue(issue: ValidationIssue): void {
   if (__DEV__) {
-    if (issue.level === 'error') {
-      console.error('WebMCP: %s', issue.message);
-    } else {
-      console.warn('WebMCP: %s', issue.message);
+    const name = issue.qualifiedName;
+    switch (issue.rule) {
+      case 'duplicate-name': {
+        if (issue.source === 'tree') {
+          console.error(
+            'Two WebMCP tools are registered with the name "%s". Agents ' +
+              'cannot tell them apart. Give them distinct names, or wrap one ' +
+              'in <Scope name> to prefix it.',
+            name,
+          );
+        } else {
+          console.error(
+            'Two WebMCP tools are registered with the name "%s". Agents ' +
+              'cannot tell them apart. Give them distinct names, or wrap one ' +
+              'in <ReactDOM.unstable_WebMCPScope name> to prefix it.',
+            name,
+          );
+        }
+        break;
+      }
+      case 'missing-name': {
+        console.error(
+          'Expected the `name` of a WebMCP tool to be a non-empty string.',
+        );
+        break;
+      }
+      case 'invalid-name': {
+        console.error(
+          'The WebMCP tool name "%s" contains characters other than letters, ' +
+            'digits, underscores and hyphens, which agents may reject. Use ' +
+            'only those in tool and scope names, like "add_item".',
+          name,
+        );
+        break;
+      }
+      case 'name-length': {
+        console.warn(
+          'The WebMCP tool name "%s" is longer than %s characters. Prefer ' +
+            'short, action-oriented names like "add_item".',
+          name,
+          MAX_NAME_LENGTH,
+        );
+        break;
+      }
+      case 'qualified-name-length': {
+        console.warn(
+          'The scoped WebMCP tool name "%s" is longer than %s characters. ' +
+            'Use shorter scope names.',
+          name,
+          MAX_NAME_LENGTH,
+        );
+        break;
+      }
+      case 'missing-description': {
+        console.error(
+          'The WebMCP tool "%s" has no description. Agents pick tools by ' +
+            'their descriptions; say what the tool does and when to use it.',
+          name,
+        );
+        break;
+      }
+      case 'description-length': {
+        console.warn(
+          'The description of the WebMCP tool "%s" is longer than %s ' +
+            'characters. Agents may truncate it.',
+          name,
+          MAX_DESCRIPTION_LENGTH,
+        );
+        break;
+      }
+      case 'required-not-declared': {
+        console.error(
+          'The inputSchema of the WebMCP tool "%s" marks "%s" as required ' +
+            'but does not declare it in `properties`.',
+          name,
+          issue.detail,
+        );
+        break;
+      }
+      case 'param-description-length': {
+        console.warn(
+          'The description of parameter "%s" on the WebMCP tool "%s" is ' +
+            'longer than %s characters.',
+          issue.detail,
+          name,
+          MAX_PARAM_DESCRIPTION_LENGTH,
+        );
+        break;
+      }
+      case 'missing-safety': {
+        console.warn(
+          'The WebMCP tool "%s" does not declare `safety`. Agents assume a ' +
+            'tool mutates state unless it is marked "read", and ask the user ' +
+            'before running one marked "irreversible".',
+          name,
+        );
+        break;
+      }
+      case 'duplicate-key': {
+        if (issue.source === 'tree') {
+          console.error(
+            'Two components registered a WebMCP tool named "%s" without ' +
+              'distinct keys. Agents cannot tell them apart, and developer ' +
+              'tooling only keeps the most recent one. Give them distinct ' +
+              'names, wrap one in <Scope name> to prefix it, or set a unique ' +
+              '`id` on each <Tool>.',
+            name,
+          );
+        } else {
+          console.error(
+            'Two components registered a WebMCP tool named "%s" without ' +
+              'distinct keys. Agents cannot tell them apart, and developer ' +
+              'tooling only keeps the most recent one. Give them distinct ' +
+              'names, wrap one in <ReactDOM.unstable_WebMCPScope name> to ' +
+              'prefix it, or pass a unique `key` option to each ' +
+              'ReactDOM.unstable_useWebMCPTool call.',
+            name,
+          );
+        }
+        break;
+      }
+      case 'missing-execute': {
+        console.error(
+          'The WebMCP tool "%s" has no `execute` function. It will not be ' +
+            'registered.',
+          name,
+        );
+        break;
+      }
     }
   }
 }
@@ -229,9 +327,4 @@ export function reportIssues(key: string, issues: Array<ValidationIssue>) {
       logIssue(issue);
     }
   }
-}
-
-// Test-only: forget which issues were already reported.
-export function resetReportedIssuesForTesting() {
-  reported.clear();
 }

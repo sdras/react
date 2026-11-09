@@ -610,11 +610,10 @@ describe('ToolTree', () => {
   // @gate enableWebMCP
   it('warns when two tools in the tree share a key, once the commit settles', async () => {
     const collisionMessage =
-      'WebMCP: Two components registered a tool named "add_item" without ' +
+      'Two components registered a WebMCP tool named "add_item" without ' +
       'distinct keys. Agents cannot tell them apart, and developer tooling ' +
       'only keeps the most recent one. Give them distinct names, wrap one ' +
-      'in a <ToolScope name> to prefix it, or set a unique `key` on each ' +
-      'useWebMCPTool call (`id` on <Tool>).';
+      'in <Scope name> to prefix it, or set a unique `id` on each <Tool>.';
     function App({showSecond}) {
       return (
         <ToolTree>
@@ -640,6 +639,76 @@ describe('ToolTree', () => {
     // Reported from <ToolTree>'s passive effect, after the DOM commit.
     assertConsoleErrorDev([collisionMessage + '\n    in App (at **)']);
     expect(statuses()).toEqual([['add_item', 'registered']]);
+  });
+
+  // @gate enableWebMCP
+  it('warns when two tools in the tree share an agent-facing name under distinct ids', async () => {
+    function App() {
+      return (
+        <ToolTree>
+          <Tool
+            id="first"
+            name="add_item"
+            description="Add."
+            safety="mutate"
+            execute={() => 1}
+          />
+          <Tool
+            id="second"
+            name="add_item"
+            description="Add again."
+            safety="mutate"
+            execute={() => 2}
+          />
+        </ToolTree>
+      );
+    }
+    await act(() => root.render(<App />));
+    assertConsoleErrorDev(
+      [
+        'Two WebMCP tools are registered with the name "add_item". Agents ' +
+          'cannot tell them apart. Give them distinct names, or wrap one in ' +
+          '<Scope name> to prefix it.',
+      ],
+      {withoutStack: true},
+    );
+  });
+
+  // Every record a commit touches is written under one registry batch, so
+  // developer tooling subscribed to the registry hears about a commit once.
+  // @gate enableWebMCP
+  it('notifies registry subscribers once per commit', async () => {
+    const snapshots = [];
+    const unsubscribe = ReactDOM.unstable_subscribeToWebMCPTools(() => {
+      snapshots.push(statuses());
+    });
+    function App({count}) {
+      const tools = [];
+      for (let i = 0; i < count; i++) {
+        tools.push(
+          <Tool
+            key={i}
+            name={'tool_' + i}
+            description="Tool."
+            safety="read"
+            execute={() => i}
+          />,
+        );
+      }
+      return <ToolTree>{tools}</ToolTree>;
+    }
+    await act(() => root.render(<App count={3} />));
+    expect(snapshots).toEqual([
+      [
+        ['tool_0', 'registered'],
+        ['tool_1', 'registered'],
+        ['tool_2', 'registered'],
+      ],
+    ]);
+    snapshots.length = 0;
+    await act(() => root.render(<App count={1} />));
+    expect(snapshots).toEqual([[['tool_0', 'registered']]]);
+    unsubscribe();
   });
 
   // @gate enableWebMCP

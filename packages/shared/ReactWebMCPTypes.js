@@ -23,7 +23,8 @@ export type Safety = 'read' | 'mutate' | 'irreversible';
 export type Lifetime = 'app' | 'route' | 'view';
 
 export type ToolStatus =
-  // The tool is currently registered with the browser.
+  // React has registered the tool with the browser, or is registering it: a
+  // refusal turns this into 'error'.
   | 'registered'
   // The author disabled the tool (`enabled={false}`).
   | 'disabled'
@@ -61,12 +62,12 @@ export type ToolRecord = {
   description: string,
   inputSchema: mixed,
   annotations: ToolAnnotations,
-  safety: Safety | null,
+  safety: null | Safety,
   lifetime: Lifetime,
   source: ToolSource,
   status: ToolStatus,
   availability: ToolAvailability,
-  error: string | null,
+  error: null | string,
   // Registry identity of the writer. Hook path: the `useRef` object of the
   // owning component. Tree path: the host instance. Used by developer tooling
   // to find the owner fiber. Stripped from the public snapshot.
@@ -81,16 +82,16 @@ export type PublicToolRecord = {
   description: string,
   inputSchema: mixed,
   annotations: ToolAnnotations,
-  safety: Safety | null,
+  safety: null | Safety,
   lifetime: Lifetime,
   source: ToolSource,
   status: ToolStatus,
   availability: ToolAvailability,
-  error: string | null,
+  error: null | string,
 };
 
 export type ToolExecuteClient = {
-  signal: AbortSignal | null,
+  signal: null | AbortSignal,
   ...
 };
 
@@ -108,14 +109,17 @@ export type WebMCPToolDescriptor = {
   description: string,
   inputSchema?: mixed,
   annotations?: ToolAnnotations,
-  execute: (input: any, client: any) => mixed,
+  // The browser's input is untyped. Polyfills may call without a client.
+  execute: (input: mixed, client: ?ToolExecuteClient) => mixed,
 };
 
 export type ModelContextLike = {
+  // Returns nothing when it accepts synchronously; a browser that decides
+  // asynchronously returns a promise that rejects on refusal.
   registerTool: (
     tool: WebMCPToolDescriptor,
     options?: {signal?: AbortSignal, ...},
-  ) => mixed,
+  ) => void | Promise<void>,
   ...
 };
 
@@ -152,9 +156,15 @@ export type UseWebMCPToolOptions = {
 export type UseWebMCPToolResult = {
   // `document.modelContext` exists in this environment.
   supported: boolean,
-  // The tool is currently registered with the browser.
+  // The tool is enabled and the browser has accepted its current definition
+  // from this hook. Registration is a layout effect, so a new definition is
+  // false in the render that leads to it and true from the re-render that
+  // follows the browser's acceptance, and a definition the browser refused
+  // stays false. A definition accepted earlier (re-enabled, or revealed after
+  // a Suspense or Activity hide) is true in the render that registers it
+  // again; a refusal then corrects it before paint.
   registered: boolean,
-  error: Error | null,
+  error: null | Error,
   // The name the agent sees, including scope prefixes.
   qualifiedName: string,
   // Whether the tool is meant to be exposed right now.
@@ -194,14 +204,14 @@ export type WebMCPInternals = {
   // normalizeToolError
   e: (error: mixed) => ToolResponse,
   // getModelContext
-  m: () => ModelContextLike | null,
+  m: () => null | ModelContextLike,
   // safeStringify, for messages
   j: (value: mixed) => string,
   // contentKey, for comparisons
   h: (value: mixed) => string,
   // combineAbortSignals
   s: (
-    client: AbortSignal | null,
-    lifetime: AbortSignal | null,
-  ) => AbortSignal | null,
+    client: null | AbortSignal,
+    lifetime: null | AbortSignal,
+  ) => null | AbortSignal,
 };

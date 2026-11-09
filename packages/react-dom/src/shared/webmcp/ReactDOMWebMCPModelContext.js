@@ -12,7 +12,7 @@ import type {ModelContextLike} from 'shared/ReactWebMCPTypes';
 // WebMCP exposes the imperative API on `document.modelContext`. It is absent
 // on the server, in browsers without the feature, and before a browser
 // extension injects a polyfill, so every read goes through this check.
-export function getModelContext(): ModelContextLike | null {
+export function getModelContext(): null | ModelContextLike {
   if (typeof document === 'undefined') {
     return null;
   }
